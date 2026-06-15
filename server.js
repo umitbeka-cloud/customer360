@@ -38,7 +38,7 @@ function getPgPool(host, port, database, user, password, ssl) {
   return pgPool;
 }
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // ─── helpers ───────────────────────────────────────────────
 function json(res, status, obj) {
