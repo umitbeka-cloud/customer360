@@ -1,0 +1,294 @@
+// ============================================================
+//  НАСТРОЙКИ — заполните перед запуском
+// ============================================================
+const BITRIX_WEBHOOK = 'https://trustme.bitrix24.kz/rest/41/mxp4avxiokys34gm/';
+
+const GROUPS = [
+  {
+    groupId:   45,
+    sheetId:   '193gHHHeJsoMagFCk39-xf1DAVw6jFP2NBLFVLTmnBEc',  // Google Spreadsheet ID
+    sheetName: 'Sheet1',
+    startRow:  2,   // строка 1 — ваша шапка, не трогаем
+    hasExtraCol: true  // есть формула в последней колонке
+  },
+  {
+    groupId:   35,
+    sheetId:   '1cTKyj756WnRqBMEquY4ZrfDLQu6kpBM2bY4Z3yp9X1M',     // Google Spreadsheet ID
+    sheetName: '1',
+    startRow:  1,   // шапка только от скрипта
+    hasExtraCol: false
+  }
+];
+// ============================================================
+
+const STATUS_MAP = {
+  '1': 'Новая',
+  '2': 'Ждёт выполнения',
+  '3': 'В работе',
+  '4': 'Ждёт контроля',
+  '5': 'Завершена',
+  '6': 'Отклонена',
+  '7': 'Отложена'
+};
+
+const HEADERS = [
+  'ID', 'Название', 'Описание', 'Последняя активность',
+  'Крайний срок', 'Постановщик', 'Исполнитель',
+  'Соисполнители', 'Наблюдатели', 'Статус', 'Проект',
+  'Дата создания', 'Дата начала работы', 'Дата изменения',
+  'Дата закрытия', 'Планируемая длительность',
+  'Учитывать рабочее время', 'Оценка',
+  'Разрешено изменять крайний срок', 'Затрачено', 'Теги',
+  'Лид', 'Контакт', 'Компания', 'Сделка', 'CRM',
+  'ID базовой задачи', 'Название базовой задачи',
+  'Планируемая дата начала', 'Планируемая дата окончания', 'Поток'
+];
+
+// ============================================================
+//  ГЛАВНАЯ ФУНКЦИЯ — синхронизирует все группы
+// ============================================================
+function syncBitrixToSheets() {
+  GROUPS.forEach(cfg => {
+    Logger.log(`▶ Синхронизация группы ${cfg.groupId} → лист "${cfg.sheetName}"`);
+    try {
+      const tasks = fetchAllTasks(cfg.groupId);
+      Logger.log(`  Получено задач: ${tasks.length}`);
+
+      if (tasks.length === 0) {
+        Logger.log('  Задачи не найдены');
+        return;
+      }
+
+      const parentIds = [...new Set(tasks.map(t => t.parentId).filter(Boolean))];
+      const parentTitles = parentIds.length > 0 ? fetchParentTitles(parentIds) : {};
+
+      const rows = tasks.map(t => taskToRow(t, parentTitles));
+      writeToSheet(rows, cfg);
+
+      Logger.log(`  ✅ Готово`);
+    } catch (e) {
+      Logger.log(`  ❌ Ошибка: ${e}`);
+    }
+  });
+}
+
+// ============================================================
+//  ПОЛУЧЕНИЕ ВСЕХ ЗАДАЧ С ПАГИНАЦИЕЙ
+// ============================================================
+function fetchAllTasks(groupId) {
+  const allTasks = [];
+  let start = 0;
+
+  const selectFields = [
+    'ID', 'PARENT_ID', 'TITLE', 'DESCRIPTION', 'ACTIVITY_DATE',
+    'DEADLINE', 'CREATED_BY', 'RESPONSIBLE_ID', 'ACCOMPLICES',
+    'AUDITORS', 'STATUS', 'GROUP_ID', 'CREATED_DATE', 'DATE_START',
+    'CHANGED_DATE', 'CLOSED_DATE', 'DURATION_PLAN', 'MATCH_WORK_TIME',
+    'MARK', 'ALLOW_CHANGE_DEADLINE', 'TIME_SPENT_IN_LOGS',
+    'TAGS', 'UF_CRM_TASK', 'START_DATE_PLAN', 'END_DATE_PLAN',
+    'FLOW_ID', 'PRIORITY'
+  ];
+
+  do {
+    const params = selectFields.map(f => `select[]=${f}`).join('&')
+      + `&filter[GROUP_ID]=${groupId}`
+      + `&order[ID]=ASC`
+      + `&start=${start}`;
+
+    const url = `${BITRIX_WEBHOOK}tasks.task.list?${params}`;
+
+    let data;
+    try {
+      const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+      data = JSON.parse(resp.getContentText());
+    } catch (e) {
+      Logger.log('Ошибка запроса: ' + e);
+      break;
+    }
+
+    if (data.error) {
+      Logger.log('Bitrix API error: ' + JSON.stringify(data));
+      break;
+    }
+
+    const batch = (data.result && data.result.tasks) ? data.result.tasks : [];
+    allTasks.push(...batch);
+
+    start = data.next != null ? data.next : null;
+    if (start) Utilities.sleep(300);
+
+  } while (start != null);
+
+  return allTasks;
+}
+
+// ============================================================
+//  ПОЛУЧЕНИЕ НАЗВАНИЙ РОДИТЕЛЬСКИХ ЗАДАЧ
+// ============================================================
+function fetchParentTitles(ids) {
+  const titles = {};
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50);
+    const params = chunk.map(id => `filter[ID][]=${id}`).join('&')
+      + '&select[]=ID&select[]=TITLE';
+    const url = `${BITRIX_WEBHOOK}tasks.task.list?${params}`;
+    try {
+      const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+      const data = JSON.parse(resp.getContentText());
+      (data.result && data.result.tasks || []).forEach(t => {
+        titles[t.id] = t.title;
+      });
+    } catch (e) {
+      Logger.log('Ошибка получения родительских задач: ' + e);
+    }
+    Utilities.sleep(200);
+  }
+  return titles;
+}
+
+// ============================================================
+//  ПРЕОБРАЗОВАНИЕ ЗАДАЧИ В СТРОКУ ТАБЛИЦЫ
+// ============================================================
+function taskToRow(t, parentTitles) {
+  const crmRaw   = Array.isArray(t.ufCrmTask) ? t.ufCrmTask : [];
+  const leads    = crmRaw.filter(v => v.startsWith('L_')).join(', ');
+  const contacts = crmRaw.filter(v => v.startsWith('C_')).join(', ');
+  const companies= crmRaw.filter(v => v.startsWith('CO_')).join(', ');
+  const deals    = crmRaw.filter(v => v.startsWith('D_')).join(', ');
+  const crmAll   = crmRaw.join(', ');
+
+  const accomplices = Array.isArray(t.accomplicesData) ? t.accomplicesData.map(u => u.name).join(', ') : '';
+  const auditors    = Array.isArray(t.auditorsData)    ? t.auditorsData.map(u => u.name).join(', ')    : '';
+
+  const durationPlan = t.durationPlan && t.durationPlan !== '0'
+    ? `${t.durationPlan} ${t.durationType === 'days' ? 'дн.' : 'ч.'}`
+    : '';
+
+  const spentSec  = parseInt(t.timeSpentInLogs || 0);
+  const timeSpent = spentSec > 0
+    ? `${Math.floor(spentSec / 3600)}ч ${Math.floor((spentSec % 3600) / 60)}м`
+    : '';
+
+  return [
+    t.id,
+    t.title,
+    stripBbcode(t.description || ''),
+    fmtDate(t.activityDate),
+    fmtDate(t.deadline),
+    t.creator     ? t.creator.name     : t.createdBy,
+    t.responsible ? t.responsible.name : t.responsibleId,
+    accomplices,
+    auditors,
+    STATUS_MAP[t.status] || t.status,
+    t.group ? t.group.name : t.groupId,
+    fmtDate(t.createdDate),
+    fmtDate(t.dateStart),
+    fmtDate(t.changedDate),
+    fmtDate(t.closedDate),
+    durationPlan,
+    yesNo(t.matchWorkTime),
+    t.mark || '',
+    yesNo(t.allowChangeDeadline),
+    timeSpent,
+    Array.isArray(t.tags) ? t.tags.join(', ') : '',
+    leads,
+    contacts,
+    companies,
+    deals,
+    crmAll,
+    t.parentId || '',
+    t.parentId ? (parentTitles[t.parentId] || '') : '',
+    fmtDate(t.startDatePlan),
+    fmtDate(t.endDatePlan),
+    t.flowId || ''
+  ];
+}
+
+// ============================================================
+//  ЗАПИСЬ В GOOGLE SHEETS
+// ============================================================
+function writeToSheet(rows, cfg) {
+  const ss    = SpreadsheetApp.openById(cfg.sheetId);
+  let sheet   = ss.getSheetByName(cfg.sheetName);
+  if (!sheet) sheet = ss.insertSheet(cfg.sheetName);
+
+  const dataColCount = HEADERS.length;
+  const startRow     = cfg.startRow;      // 1 или 2 в зависимости от группы
+  const dataStartRow = startRow + 1;      // строка первых данных (после шапки скрипта)
+
+  // Очищаем только наши колонки, не трогая последнюю с формулой
+  const lastRow = sheet.getLastRow();
+  if (lastRow >= startRow) {
+    sheet.getRange(startRow, 1, lastRow - startRow + 1, dataColCount).clearContent();
+  }
+
+  // Шапка скрипта
+  const headerRange = sheet.getRange(startRow, 1, 1, dataColCount);
+  headerRange.setValues([HEADERS]);
+  headerRange
+    .setBackground('#1F3864')
+    .setFontColor('#FFFFFF')
+    .setFontWeight('bold')
+    .setFontSize(10);
+
+  // Данные
+  if (rows.length > 0) {
+    sheet.getRange(dataStartRow, 1, rows.length, dataColCount).setValues(rows);
+  }
+
+  // Зебра-раскраска
+  for (let i = 0; i < rows.length; i++) {
+    sheet.getRange(dataStartRow + i, 1, 1, dataColCount)
+      .setBackground(i % 2 === 0 ? '#FFFFFF' : '#EEF2FF');
+  }
+
+  sheet.setFrozenRows(startRow); // замораживаем все шапки
+
+  Logger.log(`  Записано строк: ${rows.length}`);
+}
+
+// ============================================================
+//  ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ============================================================
+function fmtDate(val) {
+  if (!val || val === '0001-01-01T00:00:00+00:00') return '';
+  try {
+    return Utilities.formatDate(
+      new Date(val),
+      Session.getScriptTimeZone(),
+      'dd.MM.yyyy HH:mm'
+    );
+  } catch (e) { return val; }
+}
+
+function yesNo(val) {
+  if (val === 'Y') return 'Да';
+  if (val === 'N') return 'Нет';
+  return val || '';
+}
+
+function stripBbcode(text) {
+  return text
+    .replace(/\[.*?\]/g, '')
+    .replace(/<[^>]*>/g, '')
+    .trim();
+}
+
+// ============================================================
+//  УСТАНОВКА АВТОЗАПУСКА (запустить один раз вручную)
+// ============================================================
+function createTrigger() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'syncBitrixToSheets') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+
+  ScriptApp.newTrigger('syncBitrixToSheets')
+    .timeBased()
+    .everyHours(1)
+    .create();
+
+  Logger.log('Триггер установлен: каждый час');
+}
+

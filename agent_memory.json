@@ -1,0 +1,15 @@
+{
+  "lastCheckedCaseId": 410181579,
+  "lastCheckedAt": "2026-06-10T04:21:33.922Z",
+  "decisions": [],
+  "stats": {
+    "processed": 0,
+    "alerted": 0,
+    "errors": 168
+  },
+  "kpis": {
+    "negPct": 0,
+    "aggPct": 0,
+    "totalProcessed": 0
+  }
+}

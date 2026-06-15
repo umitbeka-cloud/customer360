@@ -1,0 +1,11 @@
+{
+  "od_domain": "headofcuscare.omnidesk.ru",
+  "od_email": "Zhunisbek.Z@trustme.kz",
+  "od_key": "7f17799f44e15254f6896eca1",
+  "ai_key": "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",
+  "ai_model": "anthropic/claude-haiku",
+  "interval_minutes": 5,
+  "neg_threshold": 20,
+  "telegram_bot_token": "",
+  "telegram_chat_id": ""
+}

@@ -1,0 +1,6 @@
+node_modules/
+# npm packages (huge, not needed)
+omnidesk_archive_2026-06-12_76545cases.json
+# your 115MB customer file
+.env
+# any secrets/API keys
