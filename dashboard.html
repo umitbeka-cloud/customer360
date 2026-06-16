@@ -853,6 +853,9 @@ a:hover { text-decoration: underline; }
     <button class="nav-btn" onclick="go('trustme',this);initTrustMe()">
       <i class="ti ti-heart-rate-monitor"></i> TrustMe
     </button>
+    <button class="nav-btn" onclick="go('bitrix',this);initBitrix()">
+      <i class="ti ti-topology-star-3"></i> Битрикс CRM
+    </button>
     <button class="nav-btn" onclick="go('sla',this)">
       <i class="ti ti-clock-bolt"></i> SLA по компаниям
     </button>
@@ -1649,6 +1652,43 @@ a:hover { text-decoration: underline; }
         </div>
       </div>
 
+      <!-- Bitrix24 Settings Card -->
+      <div class="setup-card">
+        <div class="setup-title"><i class="ti ti-topology-star-3"></i>Bitrix24 CRM</div>
+        <div class="info-box">
+          <i class="ti ti-info-circle"></i>
+          <span>Укажи URL портала и REST-токен (Bitrix24 → Настройки → Интеграции → REST API → «Добавить входящий вебхук», права: CRM). Сделки хранятся локально в SQLite — один раз синхронизировал, потом мгновенно. Дельта-синхронизация подгружает только изменённые.</span>
+        </div>
+        <div class="row2">
+          <div class="field-wrap">
+            <label class="field-lbl">URL портала</label>
+            <input type="text" id="bx-portal" class="input" placeholder="https://yourcompany.bitrix24.kz" />
+          </div>
+          <div class="field-wrap">
+            <label class="field-lbl">REST-токен (входящий вебхук)</label>
+            <input type="password" id="bx-token" class="input" placeholder="abc123def456..." />
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field-wrap">
+            <label class="field-lbl">ID воронки (CATEGORY_ID, 0 = основная)</label>
+            <input type="text" id="bx-category" class="input" placeholder="0" value="0" />
+          </div>
+          <div class="field-wrap" style="display:flex;flex-direction:column;justify-content:flex-end">
+            <div class="info-box" style="margin:0;font-size:11px;padding:8px 10px">
+              <i class="ti ti-info-circle"></i>
+              <span>Сначала установите: <code>npm install better-sqlite3</code></span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button class="btn-primary" onclick="saveBxSettings();testBitrix()">
+            <i class="ti ti-plug"></i> Проверить и сохранить
+          </button>
+          <span id="bx-status"></span>
+        </div>
+      </div>
+
     </div>
 
 
@@ -1687,6 +1727,103 @@ a:hover { text-decoration: underline; }
       </div>
     </div>
 
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- БИТРИКС CRM PAGE                                           -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="page" id="page-bitrix">
+
+      <!-- Sync status bar -->
+      <div class="card" style="padding:14px 20px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button class="btn-primary" id="bx-btn-full" onclick="startBxSync('full')" style="padding:7px 14px;font-size:12px">
+            <i class="ti ti-database-import"></i> Полная синхронизация
+          </button>
+          <button class="btn-secondary" id="bx-btn-delta" onclick="startBxSync('delta')" style="padding:7px 14px;font-size:12px">
+            <i class="ti ti-refresh"></i> Обновить (дельта)
+          </button>
+          <div style="flex:1;min-width:160px">
+            <div style="height:4px;background:var(--bg3);border-radius:4px;overflow:hidden;margin-bottom:5px">
+              <div id="bx-sync-bar" style="height:100%;width:0%;background:var(--accent);border-radius:4px;transition:width .3s"></div>
+            </div>
+            <div id="bx-sync-info" style="font-size:11px;color:var(--text3)">Нажми «Полная синхронизация» для первой загрузки</div>
+          </div>
+          <div id="bx-last-sync" style="font-size:11px;color:var(--text3);white-space:nowrap"></div>
+        </div>
+      </div>
+
+      <!-- KPI row -->
+      <div class="metrics">
+        <div class="metric">
+          <span class="met-icon" style="color:var(--blue)"><i class="ti ti-briefcase"></i></span>
+          <div class="met-val" id="bx-total-deals">—</div>
+          <div class="met-lbl">Всего сделок (открытых)</div>
+        </div>
+        <div class="metric">
+          <span class="met-icon" style="color:var(--accent)"><i class="ti ti-currency-tenge"></i></span>
+          <div class="met-val" id="bx-pipeline-sum">—</div>
+          <div class="met-lbl">Сумма воронки</div>
+        </div>
+        <div class="metric">
+          <span class="met-icon" style="color:var(--orange)"><i class="ti ti-clock-exclamation"></i></span>
+          <div class="met-val" id="bx-stale-count">—</div>
+          <div class="met-lbl">Без активности >30д</div>
+        </div>
+        <div class="metric">
+          <span class="met-icon" style="color:var(--red)"><i class="ti ti-calendar-due"></i></span>
+          <div class="met-val" id="bx-overdue-count">—</div>
+          <div class="met-lbl">Просрочено</div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title"><i class="ti ti-tag"></i>По типу сделки</div>
+          <div id="bx-by-type"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-title"><i class="ti ti-trophy"></i>Топ-10 по сумме</div>
+          <div id="bx-top-deals"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text"></div></div>
+        </div>
+      </div>
+
+      <!-- Full deals table -->
+      <div class="card">
+        <div class="card-title">
+          <i class="ti ti-list-details"></i>Все открытые сделки
+          <span class="badge-sm" id="bx-table-count">—</span>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+            <input class="input" id="bx-search" placeholder="Поиск по названию…" style="width:200px;padding:5px 10px;font-size:12px" oninput="bxFilterTable()">
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="pm-table">
+            <thead><tr>
+              <th>ID</th><th>Название</th><th>Тип</th><th style="text-align:right">Сумма ₸</th>
+              <th>Ответственный</th><th>Активность</th><th>Закрытие</th><th>Источник</th>
+            </tr></thead>
+            <tbody id="bx-tbody">
+              <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">
+                <i class="ti ti-database" style="font-size:28px;display:block;margin-bottom:8px"></i>
+                Загружаем из локальной базы…
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- AI Summary card -->
+      <div class="card">
+        <div class="card-title"><i class="ti ti-sparkles"></i>AI-анализ воронки</div>
+        <div style="margin-bottom:14px">
+          <button class="btn-primary" id="bx-ai-btn" onclick="runBxAI()">
+            <i class="ti ti-sparkles"></i> Анализировать с Claude
+          </button>
+        </div>
+        <div class="report-out" id="bx-ai-out" style="display:none"></div>
+      </div>
+
+    </div><!-- /page-bitrix -->
 
 
   </main>
@@ -5529,6 +5666,391 @@ function renderTmTable(type, rows) {
       <td style="text-align:center;font-weight:700;font-size:14px;color:${scoreColor}">${r.score ?? '—'}</td>
     </tr>`;
   }).join('');
+}
+
+/* ════════════════════════════════════════════════════════════
+   BITRIX24 CRM MODULE  (SQLite-backed)
+   ════════════════════════════════════════════════════════════ */
+
+// ── Settings helpers ──────────────────────────────────────
+function getBxCreds() {
+  return {
+    portal: (localStorage.getItem('bx_portal') || '').trim().replace(/\/$/, ''),
+    token:  (localStorage.getItem('bx_token')  || '').trim(),
+  };
+}
+
+function saveBxSettings() {
+  const portal = (document.getElementById('bx-portal')?.value || '').trim();
+  const token  = (document.getElementById('bx-token')?.value  || '').trim();
+  if (!portal || !token) { showToast('Заполни URL портала и токен'); return false; }
+  localStorage.setItem('bx_portal',   portal);
+  localStorage.setItem('bx_token',    token);
+  localStorage.setItem('bx_category', document.getElementById('bx-category')?.value || '0');
+  showToast('Настройки Bitrix24 сохранены ✓');
+  return true;
+}
+
+function loadBxSettings() {
+  const set = (id, key) => { const el = document.getElementById(id); if (el) el.value = localStorage.getItem(key) || ''; };
+  set('bx-portal',   'bx_portal');
+  set('bx-token',    'bx_token');
+  set('bx-category', 'bx_category');
+}
+
+// ── Connection test ───────────────────────────────────────
+async function testBitrix() {
+  if (!saveBxSettings()) return;
+  const { portal, token } = getBxCreds();
+  const statusEl = document.getElementById('bx-status');
+  statusEl.innerHTML = '<span class="conn-status cs-wait"><span class="spinner" style="display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid rgba(255,255,255,0.15);border-top-color:var(--accent);animation:spin .7s linear infinite"></span> Проверка…</span>';
+  try {
+    const resp = await fetch('/api/bitrix/test', {
+      headers: { 'x-bx-portal': portal, 'x-bx-token': token }
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Ошибка');
+    statusEl.innerHTML = `<span class="conn-status cs-ok"><i class="ti ti-check"></i>Подключено · ${(data.total||0).toLocaleString('ru')} сделок в Bitrix · ${(data.cached||0).toLocaleString('ru')} в кэше</span>`;
+  } catch(e) {
+    statusEl.innerHTML = `<span class="conn-status cs-err"><i class="ti ti-x"></i>${escapeHtml(e.message)}</span>`;
+  }
+}
+
+// ── Page init ─────────────────────────────────────────────
+let _bxInited = false;
+let _bxDeals  = [];
+
+function initBitrix() {
+  loadBxSettings();
+  loadBxFromCache();           // read from SQLite immediately
+  pollSyncStatus();            // show progress if sync was running
+}
+
+// ── Read from SQLite (instant) ────────────────────────────
+async function loadBxFromCache() {
+  const tbody = document.getElementById('bx-tbody');
+  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3)">
+    <span class="spinner" style="display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,0.15);border-top-color:var(--accent);animation:spin .7s linear infinite;margin-right:8px"></span>Читаем из локальной базы…</td></tr>`;
+  try {
+    const search   = (document.getElementById('bx-search')?.value || '');
+    const category = localStorage.getItem('bx_category') || '';
+    let url = '/api/bitrix/deals?open=true';
+    if (search)   url += `&search=${encodeURIComponent(search)}`;
+    if (category) url += `&category=${encodeURIComponent(category)}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error);
+    _bxDeals = data.deals || [];
+
+    // update last sync label
+    if (data.lastSync) {
+      const d = new Date(data.lastSync);
+      const label = d.toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+      const el = document.getElementById('bx-last-sync');
+      if (el) el.textContent = `Последняя синхр.: ${label}`;
+    }
+
+    if (!_bxDeals.length) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">
+        <i class="ti ti-database-off" style="font-size:28px;display:block;margin-bottom:8px"></i>
+        Локальная база пуста.<br><br>
+        <strong style="color:var(--text2)">Настрой подключение в Настройках, затем нажми «Полная синхронизация»</strong>
+      </td></tr>`;
+      document.getElementById('bx-total-deals').textContent  = '—';
+      document.getElementById('bx-pipeline-sum').textContent = '—';
+      document.getElementById('bx-stale-count').textContent  = '—';
+      document.getElementById('bx-overdue-count').textContent= '—';
+      return;
+    }
+    renderBxKPI(_bxDeals);
+    renderBxByType(_bxDeals);
+    renderBxTop(_bxDeals);
+    renderBxTable(_bxDeals);
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--red)"><i class="ti ti-alert-circle" style="margin-right:6px"></i>${escapeHtml(e.message)}<br><small style="color:var(--text3)">Убедитесь что server.js запущен и установлен better-sqlite3</small></td></tr>`;
+  }
+}
+
+// ── Full / delta sync ─────────────────────────────────────
+async function startBxSync(mode) {
+  const { portal, token } = getBxCreds();
+  if (!portal || !token) {
+    showToast('Настрой подключение в разделе Настройки → Bitrix24');
+    go('setup', document.querySelector('.nav-btn:last-of-type'));
+    return;
+  }
+  const btn = document.getElementById(mode === 'full' ? 'bx-btn-full' : 'bx-btn-delta');
+  if (btn) { btn.disabled = true; }
+
+  try {
+    const resp = await fetch('/api/bitrix/sync', {
+      method: 'POST',
+      headers: { 'x-bx-portal': portal, 'x-bx-token': token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    const data = await resp.json();
+    if (resp.status === 409) { showToast('Синхронизация уже идёт…'); pollSyncStatus(); return; }
+    if (!resp.ok) throw new Error(data.error);
+    showToast(mode === 'full' ? 'Полная синхронизация запущена…' : 'Дельта-синхронизация запущена…');
+    pollSyncStatus();
+  } catch(e) {
+    showToast('Ошибка: ' + e.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── Poll sync progress ────────────────────────────────────
+let _pollTimer = null;
+async function pollSyncStatus() {
+  clearInterval(_pollTimer);
+  const bar   = document.getElementById('bx-sync-bar');
+  const info  = document.getElementById('bx-sync-info');
+  if (!bar || !info) return;
+
+  async function tick() {
+    try {
+      const resp = await fetch('/api/bitrix/sync-status');
+      const s    = await resp.json();
+
+      const pct = s.total > 0 ? Math.round(s.fetched / s.total * 100) : (s.running ? 5 : 0);
+      bar.style.width  = (s.running ? Math.max(pct, 3) : (s.error ? 100 : 100)) + '%';
+      bar.style.background = s.error ? 'var(--red)' : s.running ? 'var(--accent)' : 'var(--accent2)';
+
+      if (s.running) {
+        info.innerHTML = `<span style="color:var(--accent)">⟳ ${s.mode === 'full' ? 'Полная синхр.' : 'Дельта'}: загружено ${s.fetched.toLocaleString('ru')} / ${s.total > 0 ? s.total.toLocaleString('ru') : '?'} · в базе ${s.cached.toLocaleString('ru')}</span>`;
+      } else if (s.error) {
+        info.innerHTML = `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> Ошибка: ${escapeHtml(s.error)}</span>`;
+        clearInterval(_pollTimer);
+        document.getElementById('bx-btn-full')?.removeAttribute('disabled');
+        document.getElementById('bx-btn-delta')?.removeAttribute('disabled');
+      } else {
+        const cached = s.cached ? s.cached.toLocaleString('ru') : '0';
+        info.innerHTML = s.lastSync
+          ? `<span style="color:var(--accent2)"><i class="ti ti-check"></i> ${cached} сделок в базе · синхр. ${new Date(s.lastSync).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>`
+          : `<span style="color:var(--text3)">База пуста — нажми «Полная синхронизация»</span>`;
+        clearInterval(_pollTimer);
+        document.getElementById('bx-btn-full')?.removeAttribute('disabled');
+        document.getElementById('bx-btn-delta')?.removeAttribute('disabled');
+        if (s.cached > 0) loadBxFromCache(); // refresh table
+      }
+    } catch {}
+  }
+  tick();
+  _pollTimer = setInterval(tick, 1500);
+}
+
+// ── KPI ───────────────────────────────────────────────────
+function fmtKZT(val) {
+  const n = parseFloat(val) || 0;
+  if (n >= 1_000_000_000) return (n/1_000_000_000).toFixed(1) + ' млрд';
+  if (n >= 1_000_000)     return (n/1_000_000).toFixed(1)     + ' млн';
+  if (n >= 1_000)         return (n/1_000).toFixed(0)         + ' тыс';
+  return n.toFixed(0);
+}
+
+function renderBxKPI(deals) {
+  const now = Date.now();
+  const MS30 = 30 * 24 * 3600 * 1000;
+  let sum = 0, stale = 0, overdue = 0;
+  deals.forEach(d => {
+    const opp = parseFloat(d.opportunity || d.OPPORTUNITY) || 0;
+    sum += opp;
+    const la = d.last_activity || d.LAST_ACTIVITY_TIME;
+    const lastAct = la ? new Date(la).getTime() : 0;
+    if (lastAct && (now - lastAct) > MS30) stale++;
+    const cd = d.closedate || d.CLOSEDATE;
+    const close = cd ? new Date(cd).getTime() : 0;
+    if (close && close < now) overdue++;
+  });
+  document.getElementById('bx-total-deals').textContent  = deals.length.toLocaleString('ru');
+  document.getElementById('bx-pipeline-sum').textContent = fmtKZT(sum) + ' ₸';
+  document.getElementById('bx-stale-count').textContent  = stale;
+  document.getElementById('bx-overdue-count').textContent = overdue;
+}
+
+// ── By type chart ─────────────────────────────────────────
+const TYPE_LABELS = { SALE: 'Продажа', GOODS: 'Товары', '': 'Не указан', '-': 'Не указан' };
+
+function renderBxByType(deals) {
+  const counts = {};
+  deals.forEach(d => {
+    const raw = d.type_id ?? d.TYPE_ID ?? '';
+    const label = TYPE_LABELS[raw] || raw || 'Не указан';
+    counts[label] = (counts[label] || 0) + 1;
+  });
+  const sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+  const max = sorted[0]?.[1] || 1;
+  document.getElementById('bx-by-type').innerHTML = sorted.map(([k,v]) =>
+    `<div class="topic-row">
+      <div class="topic-name">${escapeHtml(k)}</div>
+      <div class="topic-track"><div class="topic-fill" style="width:${(v/max*100).toFixed(0)}%"></div></div>
+      <div class="topic-count">${v}</div>
+    </div>`).join('') || '<div style="color:var(--text3);font-size:13px">Нет данных</div>';
+}
+
+// ── Top 10 by sum ─────────────────────────────────────────
+function renderBxTop(deals) {
+  const sorted = [...deals]
+    .filter(d => parseFloat(d.opportunity || d.OPPORTUNITY) > 0)
+    .sort((a,b) => parseFloat(b.opportunity||b.OPPORTUNITY) - parseFloat(a.opportunity||a.OPPORTUNITY))
+    .slice(0, 10);
+  const max = parseFloat(sorted[0]?.opportunity || sorted[0]?.OPPORTUNITY) || 1;
+  document.getElementById('bx-top-deals').innerHTML = sorted.map(d => {
+    const opp = parseFloat(d.opportunity || d.OPPORTUNITY);
+    const title = d.title || d.TITLE || '—';
+    return `<div class="topic-row">
+      <div class="topic-name" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+      <div class="topic-track"><div class="topic-fill" style="width:${(opp/max*100).toFixed(0)}%"></div></div>
+      <div class="topic-count" style="width:60px;font-size:10px">${fmtKZT(opp)}</div>
+    </div>`;
+  }).join('') || '<div style="color:var(--text3);font-size:13px">Нет сделок с суммой</div>';
+}
+
+// ── Deals table ───────────────────────────────────────────
+function renderBxTable(deals) {
+  const tbody = document.getElementById('bx-tbody');
+  const count = document.getElementById('bx-table-count');
+  if (count) count.textContent = `(${deals.length.toLocaleString('ru')} сделок)`;
+  if (!deals.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3)">Нет данных</td></tr>`;
+    return;
+  }
+  const now = Date.now();
+  const fmtDate = s => s ? new Date(s).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+  const SOURCES = { WEBFORM:'Веб-форма', CALL:'Звонок' };
+
+  tbody.innerHTML = deals.slice(0, 1000).map(d => {
+    const title   = d.title    || d.TITLE    || '—';
+    const typeRaw = d.type_id  || d.TYPE_ID  || '';
+    const typeLabel = TYPE_LABELS[typeRaw] || typeRaw || '—';
+    const opp     = parseFloat(d.opportunity || d.OPPORTUNITY) || 0;
+    const oppStr  = opp > 0 ? opp.toLocaleString('ru') : '—';
+    const assigned = d.assigned_by || d.ASSIGNED_BY_ID || '—';
+
+    const laStr   = d.last_activity || d.LAST_ACTIVITY_TIME || '';
+    const lastAct = laStr ? new Date(laStr).getTime() : 0;
+    const daysAgo = lastAct ? Math.floor((now - lastAct) / 86400000) : null;
+    const staleStyle = daysAgo !== null && daysAgo > 30 ? 'color:var(--orange)' : 'color:var(--text3)';
+
+    const cdStr   = d.closedate || d.CLOSEDATE || '';
+    const close   = cdStr ? new Date(cdStr).getTime() : 0;
+    const overdueStyle = close && close < now ? 'color:var(--red);font-weight:600' : '';
+
+    const srcRaw  = d.source_id || d.SOURCE_ID || '';
+    const src     = SOURCES[srcRaw] || srcRaw.slice(0,18) || '—';
+
+    const lastCommStr = d.last_comm || d.LAST_COMMUNICATION_TIME || '';
+
+    return `<tr>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${d.id || d.ID}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px" title="${escapeHtml(title)}">${escapeHtml(title)}</td>
+      <td><span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--bg3);color:var(--text2)">${escapeHtml(typeLabel)}</span></td>
+      <td style="font-family:var(--mono);font-size:12px;text-align:right">${oppStr}</td>
+      <td style="font-size:11px;color:var(--text2)">${escapeHtml(assigned)}</td>
+      <td style="font-size:11px;${staleStyle}">${daysAgo !== null ? daysAgo + 'д назад' : '—'}</td>
+      <td style="font-size:11px;${overdueStyle}">${fmtDate(cdStr)}</td>
+      <td style="font-size:11px;color:var(--text3)">${escapeHtml(src)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function bxFilterTable() {
+  const q = (document.getElementById('bx-search')?.value || '').toLowerCase();
+  const filtered = q ? _bxDeals.filter(d => ((d.title||d.TITLE||'').toLowerCase()).includes(q)) : _bxDeals;
+  renderBxTable(filtered);
+  const count = document.getElementById('bx-table-count');
+  if (count) count.textContent = `(${filtered.length.toLocaleString('ru')} сделок)`;
+}
+
+// ── AI Analysis ───────────────────────────────────────────
+async function runBxAI() {
+  const aiKey   = localStorage.getItem('claude_key') || '';
+  const aiModel = localStorage.getItem('claude_model') || 'anthropic/claude-3.5-sonnet';
+  if (!aiKey)         { showToast('Укажи OpenRouter API ключ в Настройках'); return; }
+  if (!_bxDeals.length) { showToast('Сначала загрузи сделки (нажми Полная синхронизация)'); return; }
+
+  const btn = document.getElementById('bx-ai-btn');
+  const out  = document.getElementById('bx-ai-out');
+  btn.disabled = true;
+  out.style.display = 'block';
+  out.classList.add('streaming');
+  out.textContent = '';
+
+  const now  = Date.now();
+  const total = _bxDeals.length;
+  const totalSum = _bxDeals.reduce((s,d) => s + (parseFloat(d.opportunity||d.OPPORTUNITY)||0), 0);
+  const stale = _bxDeals.filter(d => {
+    const la = new Date(d.last_activity||d.LAST_ACTIVITY_TIME||0).getTime();
+    return la && (now - la) > 30*86400000;
+  });
+  const overdue = _bxDeals.filter(d => {
+    const c = new Date(d.closedate||d.CLOSEDATE||0).getTime();
+    return c && c < now;
+  });
+  const topDeals = [..._bxDeals]
+    .filter(d => parseFloat(d.opportunity||d.OPPORTUNITY) > 0)
+    .sort((a,b) => parseFloat(b.opportunity||b.OPPORTUNITY) - parseFloat(a.opportunity||a.OPPORTUNITY))
+    .slice(0,5)
+    .map(d => `• ${d.title||d.TITLE} — ${parseFloat(d.opportunity||d.OPPORTUNITY).toLocaleString('ru')} ₸`);
+  const byType = {};
+  _bxDeals.forEach(d => { const t = d.type_id||d.TYPE_ID||'Не указан'; byType[t]=(byType[t]||0)+1; });
+  const stale60 = stale.filter(d => (now - new Date(d.last_activity||d.LAST_ACTIVITY_TIME||0).getTime()) > 60*86400000).slice(0,5).map(d => `• ${d.title||d.TITLE}`);
+
+  const prompt = `Ты эксперт по продажам и CRM-анализу. Проанализируй состояние воронки продаж Bitrix24.
+
+Данные:
+- Всего сделок в работе: ${total}
+- Сумма воронки: ${totalSum.toLocaleString('ru')} ₸
+- Без активности >30 дней: ${stale.length} (${((stale.length/total)*100).toFixed(1)}%)
+- Просроченных (CLOSEDATE прошёл): ${overdue.length}
+- По типам: ${Object.entries(byType).map(([k,v])=>`${TYPE_LABELS[k]||k}: ${v}`).join(', ')}
+
+Топ-5 по сумме:
+${topDeals.join('\n')}
+
+Стагнирующие >60 дней:
+${stale60.join('\n') || '—'}
+
+Дай конкретный анализ на русском языке:
+1. Оценка здоровья воронки
+2. Критические проблемы
+3. Топ-3 приоритета на эту неделю
+4. Рекомендации по реактивации зависших сделок
+
+Кратко, конкретно, без воды.`;
+
+  try {
+    const resp = await fetch('/api/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': aiKey },
+      body: JSON.stringify({ model: aiModel, max_tokens: 1500, stream: true,
+        messages: [{ role:'user', content: prompt }] })
+    });
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (raw === '[DONE]') continue;
+        try {
+          const ev = JSON.parse(raw);
+          const delta = ev.choices?.[0]?.delta?.content || ev.delta?.text || '';
+          if (delta) out.textContent += delta;
+        } catch {}
+      }
+    }
+  } catch(e) {
+    out.textContent = 'Ошибка: ' + e.message;
+  }
+  out.classList.remove('streaming');
+  btn.disabled = false;
 }
 </script>
 </body>

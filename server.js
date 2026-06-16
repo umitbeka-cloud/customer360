@@ -53,7 +53,7 @@ function json(res, status, obj) {
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-api-key,anthropic-version,x-omnidesk-domain,x-omnidesk-email,x-omnidesk-key,x-pg-host,x-pg-port,x-pg-database,x-pg-user,x-pg-password,x-pg-ssl');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-api-key,anthropic-version,x-omnidesk-domain,x-omnidesk-email,x-omnidesk-key,x-pg-host,x-pg-port,x-pg-database,x-pg-user,x-pg-password,x-pg-ssl,x-bx-portal,x-bx-token,x-bx-category');
 }
 
 function readBody(req) {
@@ -497,6 +497,254 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { rows: result.rows });
     } catch(e) {
       console.error('[PG/SignHistory]', e.message);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+
+  // ══════════════════════════════════════════════════════════
+  // BITRIX24 CRM — SQLite-backed local cache
+  // ══════════════════════════════════════════════════════════
+  //
+  //  POST /api/bitrix/sync          — full sync OR delta from Bitrix24 → SQLite
+  //  GET  /api/bitrix/deals         — read from local SQLite (instant)
+  //  GET  /api/bitrix/sync-status   — progress of ongoing sync
+  //  GET  /api/bitrix/test          — quick connection test (1 deal)
+  //
+  //  Headers for all routes: x-bx-portal, x-bx-token
+  //
+  // ══════════════════════════════════════════════════════════
+
+  // ── SQLite init ──────────────────────────────────────────
+  // lazy-load better-sqlite3; if missing, routes return helpful error
+  let bxDb = null;
+  function getBxDb() {
+    if (bxDb) return bxDb;
+    let Database;
+    try { Database = require('better-sqlite3'); }
+    catch(e) { return null; }
+    const dbPath = path.join(__dirname, 'bitrix_deals.db');
+    bxDb = new Database(dbPath);
+    bxDb.exec(`
+      CREATE TABLE IF NOT EXISTS deals (
+        id            TEXT PRIMARY KEY,
+        title         TEXT,
+        type_id       TEXT,
+        stage_id      TEXT,
+        stage_semantic TEXT,
+        opportunity   REAL,
+        currency      TEXT,
+        assigned_by   TEXT,
+        closedate     TEXT,
+        date_create   TEXT,
+        date_modify   TEXT,
+        last_activity TEXT,
+        last_comm     TEXT,
+        source_id     TEXT,
+        category_id   TEXT,
+        is_closed     TEXT,
+        probability   TEXT,
+        raw           TEXT,
+        synced_at     TEXT
+      );
+      CREATE TABLE IF NOT EXISTS sync_meta (
+        key   TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `);
+    return bxDb;
+  }
+
+  // ── Bitrix24 helper: fetch one page ─────────────────────
+  async function bxFetchPage(portal, token, start, filter) {
+    // Build query string manually to avoid URL length issues
+    const FIELDS = ['ID','TITLE','TYPE_ID','STAGE_ID','STAGE_SEMANTIC_ID','OPPORTUNITY',
+                    'CURRENCY_ID','ASSIGNED_BY_ID','CLOSEDATE','DATE_CREATE','DATE_MODIFY',
+                    'LAST_ACTIVITY_TIME','LAST_COMMUNICATION_TIME','SOURCE_ID','CATEGORY_ID',
+                    'IS_CLOSED','PROBABILITY','CLOSED','COMMENTS'];
+    let qs = `start=${start}&order[DATE_MODIFY]=DESC`;
+    FIELDS.forEach(f => { qs += `&select[]=${f}`; });
+    if (filter) {
+      Object.entries(filter).forEach(([k,v]) => { qs += `&filter[${k}]=${encodeURIComponent(v)}`; });
+    }
+
+    const parsed = new URL(portal);
+    const options = {
+      hostname: parsed.hostname,
+      path:     `/rest/${token}/crm.deal.list.json?${qs}`,
+      method:   'GET',
+      headers:  { 'Accept': 'application/json' },
+    };
+    const { status, body } = await httpsRequest(options, null);
+    if (status !== 200) {
+      let msg = body;
+      try { msg = JSON.parse(body)?.error_description || body; } catch {}
+      throw new Error(`Bitrix24 HTTP ${status}: ${msg}`);
+    }
+    return JSON.parse(body);
+  }
+
+  // ── Sync progress tracker ────────────────────────────────
+  const _bxSync = { running: false, total: 0, fetched: 0, saved: 0, error: null, startedAt: null, finishedAt: null, mode: '' };
+
+  // ── GET /api/bitrix/test ─────────────────────────────────
+  if (req.method === 'GET' && pathname === '/api/bitrix/test') {
+    const portal = (req.headers['x-bx-portal'] || '').trim().replace(/\/$/, '');
+    const token  = (req.headers['x-bx-token']  || '').trim();
+    if (!portal || !token) return json(res, 400, { error: 'Missing x-bx-portal or x-bx-token' });
+    try {
+      const data = await bxFetchPage(portal, token, 0, null);
+      const db   = getBxDb();
+      const cached = db ? (db.prepare('SELECT COUNT(*) as c FROM deals').get()?.c || 0) : 0;
+      return json(res, 200, { ok: true, total: data.total || 0, cached });
+    } catch(e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
+
+  // ── GET /api/bitrix/sync-status ──────────────────────────
+  if (req.method === 'GET' && pathname === '/api/bitrix/sync-status') {
+    const db = getBxDb();
+    const cached = db ? (db.prepare('SELECT COUNT(*) as c FROM deals').get()?.c || 0) : 0;
+    const lastSync = db ? (db.prepare("SELECT value FROM sync_meta WHERE key='last_sync'").get()?.value || null) : null;
+    return json(res, 200, { ..._bxSync, cached, lastSync });
+  }
+
+  // ── POST /api/bitrix/sync ────────────────────────────────
+  if (req.method === 'POST' && pathname === '/api/bitrix/sync') {
+    const portal = (req.headers['x-bx-portal'] || '').trim().replace(/\/$/, '');
+    const token  = (req.headers['x-bx-token']  || '').trim();
+    if (!portal || !token) return json(res, 400, { error: 'Missing x-bx-portal or x-bx-token' });
+
+    const db = getBxDb();
+    if (!db) return json(res, 503, { error: 'SQLite not available. Run: npm install better-sqlite3' });
+
+    if (_bxSync.running) return json(res, 409, { error: 'Sync already running', progress: _bxSync });
+
+    let body = '';
+    try { body = await readBody(req); } catch {}
+    let opts = {};
+    try { opts = JSON.parse(body); } catch {}
+    const mode = opts.mode || 'full'; // 'full' | 'delta'
+
+    // Build filter
+    let filter = null;
+    if (mode === 'delta') {
+      // Only fetch deals modified since last sync
+      const lastSync = db.prepare("SELECT value FROM sync_meta WHERE key='last_sync'").get()?.value;
+      if (lastSync) {
+        filter = { '>=DATE_MODIFY': lastSync };
+      }
+    }
+
+    // Start async sync, respond immediately
+    _bxSync.running   = true;
+    _bxSync.total     = 0;
+    _bxSync.fetched   = 0;
+    _bxSync.saved     = 0;
+    _bxSync.error     = null;
+    _bxSync.startedAt = new Date().toISOString();
+    _bxSync.finishedAt= null;
+    _bxSync.mode      = mode;
+
+    json(res, 202, { ok: true, message: 'Sync started', mode });
+
+    // Run sync in background
+    (async () => {
+      try {
+        const upsert = db.prepare(`
+          INSERT INTO deals (id,title,type_id,stage_id,stage_semantic,opportunity,currency,
+            assigned_by,closedate,date_create,date_modify,last_activity,last_comm,
+            source_id,category_id,is_closed,probability,raw,synced_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(id) DO UPDATE SET
+            title=excluded.title, type_id=excluded.type_id, stage_id=excluded.stage_id,
+            stage_semantic=excluded.stage_semantic, opportunity=excluded.opportunity,
+            currency=excluded.currency, assigned_by=excluded.assigned_by,
+            closedate=excluded.closedate, date_modify=excluded.date_modify,
+            last_activity=excluded.last_activity, last_comm=excluded.last_comm,
+            source_id=excluded.source_id, category_id=excluded.category_id,
+            is_closed=excluded.is_closed, probability=excluded.probability,
+            raw=excluded.raw, synced_at=excluded.synced_at
+        `);
+        const upsertMany = db.transaction((rows) => {
+          for (const d of rows) {
+            upsert.run(
+              d.ID, d.TITLE||'', d.TYPE_ID||'', d.STAGE_ID||'', d.STAGE_SEMANTIC_ID||'',
+              parseFloat(d.OPPORTUNITY)||0, d.CURRENCY_ID||'KZT',
+              d.ASSIGNED_BY_ID||'', d.CLOSEDATE||'', d.DATE_CREATE||'', d.DATE_MODIFY||'',
+              d.LAST_ACTIVITY_TIME||'', d.LAST_COMMUNICATION_TIME||'',
+              d.SOURCE_ID||'', d.CATEGORY_ID||'0', d.IS_CLOSED||'N',
+              d.PROBABILITY||'', JSON.stringify(d), new Date().toISOString()
+            );
+          }
+        });
+
+        let start = 0;
+        const pageSize = 50;
+        let firstPage = true;
+
+        while (true) {
+          const data = await bxFetchPage(portal, token, start, filter);
+          if (firstPage) {
+            _bxSync.total = data.total || 0;
+            firstPage = false;
+          }
+          const page = data.result || [];
+          if (!page.length) break;
+
+          upsertMany(page);
+          _bxSync.fetched += page.length;
+          _bxSync.saved   += page.length;
+
+          console.log(`[Bitrix sync] ${_bxSync.fetched}/${_bxSync.total} deals`);
+
+          // Bitrix returns `next` field when there are more pages
+          if (!data.next && page.length < pageSize) break;
+          start = data.next || (start + pageSize);
+
+          // Small pause to be polite to Bitrix API (2 req/sec)
+          await sleep(500);
+        }
+
+        // Save last sync timestamp
+        db.prepare("INSERT OR REPLACE INTO sync_meta VALUES ('last_sync', ?)").run(new Date().toISOString());
+        _bxSync.running    = false;
+        _bxSync.finishedAt = new Date().toISOString();
+        console.log(`[Bitrix sync] Done: ${_bxSync.saved} deals saved`);
+      } catch(e) {
+        _bxSync.running = false;
+        _bxSync.error   = e.message;
+        console.error('[Bitrix sync error]', e.message);
+      }
+    })();
+
+    return; // already responded with 202
+  }
+
+  // ── GET /api/bitrix/deals — read from local SQLite ───────
+  if (req.method === 'GET' && pathname === '/api/bitrix/deals') {
+    const db = getBxDb();
+    if (!db) return json(res, 503, { error: 'SQLite not available. Run: npm install better-sqlite3' });
+
+    const u        = new URL(req.url, `http://localhost:${PORT}`);
+    const search   = (u.searchParams.get('search')   || '').toLowerCase();
+    const category = u.searchParams.get('category')  || '';
+    const onlyOpen = u.searchParams.get('open')      !== 'false'; // default: only open deals
+
+    let query = 'SELECT * FROM deals WHERE 1=1';
+    const params = [];
+    if (onlyOpen)  { query += " AND is_closed = 'N'"; }
+    if (category)  { query += ' AND category_id = ?'; params.push(category); }
+    if (search)    { query += ' AND lower(title) LIKE ?'; params.push(`%${search}%`); }
+    query += ' ORDER BY date_modify DESC';
+
+    try {
+      const deals = db.prepare(query).all(...params);
+      const total = db.prepare('SELECT COUNT(*) as c FROM deals').get()?.c || 0;
+      const lastSync = db.prepare("SELECT value FROM sync_meta WHERE key='last_sync'").get()?.value || null;
+      return json(res, 200, { deals, total_db: total, filtered: deals.length, lastSync });
+    } catch(e) {
       return json(res, 500, { error: e.message });
     }
   }

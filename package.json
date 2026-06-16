@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "better-sqlite3": "^12.11.1",
     "pg": "^8.21.0"
   }
 }
