@@ -1859,6 +1859,29 @@ let state = {
 let weekChart = null;
 
 // ═══════════════════════════════════════════════
+//  TOAST NOTIFICATIONS
+// ═══════════════════════════════════════════════
+function showToast(message, type) {
+  let host = document.getElementById('toast-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'toast-host';
+    host.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none';
+    document.body.appendChild(host);
+  }
+  const t = document.createElement('div');
+  const isErr = type === 'error';
+  t.style.cssText = `pointer-events:auto;background:${isErr ? '#2a1416' : 'var(--bg2,#1C1D23)'};color:${isErr ? '#ff8088' : 'var(--text,#fff)'};border:1px solid ${isErr ? 'rgba(255,80,80,.35)' : 'rgba(92,244,160,.25)'};border-radius:10px;padding:11px 18px;font-size:13px;box-shadow:0 8px 28px rgba(0,0,0,.45);max-width:90vw;opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s`;
+  t.textContent = message;
+  host.appendChild(t);
+  requestAnimationFrame(() => { t.style.opacity = '1'; t.style.transform = 'translateY(0)'; });
+  setTimeout(() => {
+    t.style.opacity = '0'; t.style.transform = 'translateY(8px)';
+    setTimeout(() => t.remove(), 250);
+  }, 3200);
+}
+
+// ═══════════════════════════════════════════════
 //  NAVIGATION
 // ═══════════════════════════════════════════════
 const pageTitles = {
@@ -1870,6 +1893,7 @@ const pageTitles = {
   sla:      ['SLA по компаниям', 'Время первого ответа — кого систематически заставляют ждать'],
   problems: ['Карта проблем', 'Компания × тип проблемы × количество обращений'],
   report:   ['AI-Отчёт', 'Генерация отчётов через Claude AI'],
+  bitrix:   ['Bitrix24 CRM', 'Сделки, воронки и аналитика продаж'],
   setup:    ['Настройки', 'Подключение, экспорт данных и конфигурация агента'],
 };
 function go(name, btn) {
@@ -1877,7 +1901,7 @@ function go(name, btn) {
   if (btn) btn.classList.add('active');
   document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
   document.getElementById('page-' + name).classList.add('on');
-  const [title, sub] = pageTitles[name];
+  const [title, sub] = pageTitles[name] || [name, ''];
   document.getElementById('page-title').textContent = title;
   document.getElementById('page-sub').textContent = sub;
 }
