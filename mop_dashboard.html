@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Account Manager — Дашборд</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.9.0/dist/tabler-icons.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#0E0F11; --bg1:#141519; --bg2:#1C1D23; --bg3:#24262E;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.12);
+  --text:#E8E9F0; --text2:#9496A8; --text3:#5E6078;
+  --accent:#5CF4A0; --accent2:#3DD584; --accentdim:#1B4033;
+  --orange:#FF8C42; --red:#FF5757; --blue:#5B9EF7; --purple:#A78BFA; --yellow:#F5C842;
+  --font:'DM Sans',sans-serif; --mono:'DM Mono',monospace; --display:'Syne',sans-serif;
+  --r:10px; --r2:16px; --r3:24px; --shadow:0 4px 24px rgba(0,0,0,0.5);
+}
+html,body { height:100%; }
+body { font-family:var(--font); background:var(--bg); color:var(--text); font-size:14px; line-height:1.5; }
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--bg3); border-radius:4px; }
+
+.shell { display:grid; grid-template-columns:220px 1fr; min-height:100vh; }
+
+/* Sidebar */
+.side { background:var(--bg1); border-right:1px solid var(--border); padding:20px 14px; display:flex; flex-direction:column; gap:4px; position:sticky; top:0; height:100vh; }
+.brand { display:flex; align-items:center; gap:9px; font-family:var(--display); font-weight:700; font-size:18px; padding:6px 8px 18px; }
+.brand i { color:var(--accent); font-size:22px; }
+.nav-btn { display:flex; align-items:center; gap:11px; padding:9px 12px; border:none; background:none; color:var(--text2); font-family:var(--font); font-size:13px; border-radius:var(--r); cursor:pointer; text-align:left; width:100%; transition:.15s; }
+.nav-btn i { font-size:18px; }
+.nav-btn:hover { background:var(--bg2); color:var(--text); }
+.nav-btn.active { background:var(--accentdim); color:var(--accent); }
+.nav-badge { margin-left:auto; background:var(--red); color:#fff; font-size:10px; font-weight:600; padding:1px 7px; border-radius:20px; }
+
+/* Main */
+.main { padding:22px 26px; max-width:1500px; }
+.topbar { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:22px; gap:16px; flex-wrap:wrap; }
+.page-head { display:flex; align-items:center; gap:13px; }
+.role-num { width:34px; height:34px; border-radius:9px; background:var(--purple); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-family:var(--display); }
+.page-title { font-family:var(--display); font-weight:700; font-size:22px; letter-spacing:-.01em; }
+.page-sub { color:var(--text3); font-size:12.5px; margin-top:1px; }
+.top-right { display:flex; align-items:center; gap:12px; }
+.cta-card { display:flex; align-items:center; gap:9px; background:var(--bg1); border:1px solid var(--border2); border-radius:var(--r); padding:8px 14px; cursor:pointer; transition:.15s; }
+.cta-card:hover { border-color:var(--accent); }
+.cta-card i { color:var(--purple); font-size:20px; }
+.cta-tt { font-size:12px; font-weight:500; }
+.cta-ss { font-size:10.5px; color:var(--text3); }
+.icon-btn { position:relative; width:34px; height:34px; border-radius:9px; background:var(--bg1); border:1px solid var(--border); color:var(--text2); cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.icon-btn .dot { position:absolute; top:6px; right:7px; width:7px; height:7px; background:var(--red); border-radius:50%; border:1.5px solid var(--bg1); }
+.user-chip { display:flex; align-items:center; gap:8px; background:var(--bg1); border:1px solid var(--border); border-radius:var(--r); padding:5px 11px 5px 6px; cursor:pointer; }
+.user-av { width:26px; height:26px; border-radius:50%; background:linear-gradient(135deg,var(--purple),var(--blue)); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; color:#fff; }
+.period-pill { display:flex; flex-direction:column; align-items:flex-start; background:var(--bg1); border:1px solid var(--border); border-radius:var(--r); padding:5px 13px; cursor:pointer; }
+.period-pill .lbl { font-size:9.5px; color:var(--text3); text-transform:uppercase; letter-spacing:.05em; }
+.period-pill .val { font-size:13px; font-weight:500; display:flex; align-items:center; gap:6px; }
+
+/* KPI row */
+.kpi-row { display:grid; grid-template-columns:repeat(6,1fr); gap:13px; margin-bottom:18px; }
+.kpi { background:var(--bg1); border:1px solid var(--border); border-radius:var(--r2); padding:15px 16px; }
+.kpi-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
+.kpi-lbl { font-size:11.5px; color:var(--text2); }
+.kpi-ico { width:28px; height:28px; border-radius:8px; background:var(--bg2); display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--text2); }
+.kpi-val { font-family:var(--display); font-weight:700; font-size:24px; letter-spacing:-.02em; }
+.kpi-val .cur { font-size:15px; color:var(--text2); font-weight:500; }
+.kpi-sub { font-size:11px; margin-top:5px; display:flex; align-items:center; gap:4px; }
+.up { color:var(--accent); } .down { color:var(--red); } .warn { color:var(--orange); } .muted { color:var(--text3); }
+
+/* Cards grid */
+.grid { display:grid; gap:14px; }
+.g-3 { grid-template-columns:1fr 1fr 1fr; }
+.g-2-1 { grid-template-columns:2fr 1fr; }
+.card { background:var(--bg1); border:1px solid var(--border); border-radius:var(--r2); padding:17px 18px; }
+.card-h { display:flex; align-items:center; justify-content:space-between; margin-bottom:15px; }
+.card-t { font-weight:600; font-size:14px; }
+.card-link { color:var(--accent); font-size:12px; cursor:pointer; text-decoration:none; }
+.card-link:hover { text-decoration:underline; }
+
+/* Task list */
+.task { display:flex; align-items:center; gap:12px; padding:9px 0; border-bottom:1px solid var(--border); }
+.task:last-child { border-bottom:none; }
+.task-time { font-family:var(--mono); font-size:12px; color:var(--text3); width:42px; flex-shrink:0; }
+.task-txt { flex:1; font-size:13px; }
+.pill { font-size:10.5px; font-weight:500; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.p-high { background:rgba(255,87,87,.15); color:var(--red); }
+.p-mid  { background:rgba(255,140,66,.15); color:var(--orange); }
+.p-low  { background:rgba(92,244,160,.15); color:var(--accent); }
+.p-active { background:rgba(92,244,160,.15); color:var(--accent); }
+
+/* Risk donut block */
+.risk-wrap { display:flex; align-items:center; gap:18px; }
+.risk-chart { position:relative; width:130px; height:130px; flex-shrink:0; }
+.risk-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.risk-center .n { font-family:var(--display); font-weight:700; font-size:26px; }
+.risk-center .l { font-size:10px; color:var(--text3); }
+.risk-legend { display:flex; flex-direction:column; gap:9px; font-size:12px; }
+.risk-legend .li { display:flex; align-items:center; gap:8px; }
+.risk-legend .dt { width:9px; height:9px; border-radius:50%; }
+.risk-legend .meta { color:var(--text3); font-size:11px; margin-left:2px; }
+
+/* Renewal list */
+.ren { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.ren:last-child { border-bottom:none; }
+.ren-date { font-family:var(--mono); font-size:12px; color:var(--text2); }
+.ren-sum { font-family:var(--mono); font-weight:500; }
+
+/* Table */
+.tbl-tools { display:flex; gap:9px; margin-bottom:13px; flex-wrap:wrap; }
+.inp { background:var(--bg2); border:1px solid var(--border); color:var(--text); border-radius:var(--r); padding:7px 12px; font-family:var(--font); font-size:12.5px; }
+.inp::placeholder { color:var(--text3); }
+.sel { background:var(--bg2); border:1px solid var(--border); color:var(--text2); border-radius:var(--r); padding:7px 11px; font-size:12.5px; cursor:pointer; }
+table { width:100%; border-collapse:collapse; }
+th { text-align:left; font-size:11px; font-weight:500; color:var(--text3); padding:9px 10px; border-bottom:1px solid var(--border); }
+td { padding:11px 10px; border-bottom:1px solid var(--border); font-size:13px; }
+tr:last-child td { border-bottom:none; }
+.badge { font-size:10.5px; font-weight:500; padding:2px 9px; border-radius:6px; }
+.b-green { background:rgba(92,244,160,.13); color:var(--accent); }
+.b-zone-red { background:rgba(255,87,87,.13); color:var(--red); }
+.b-zone-yellow { background:rgba(245,200,66,.13); color:var(--yellow); }
+.b-zone-green { background:rgba(92,244,160,.13); color:var(--accent); }
+.cell-mgr { display:flex; align-items:center; gap:7px; }
+.mini-av { width:22px; height:22px; border-radius:50%; background:linear-gradient(135deg,var(--purple),var(--blue)); display:flex; align-items:center; justify-content:center; font-size:10px; color:#fff; font-weight:600; }
+.cell-date { font-family:var(--mono); font-size:12px; color:var(--text2); }
+.pager { display:flex; align-items:center; justify-content:flex-end; gap:5px; margin-top:13px; }
+.pg { width:28px; height:28px; border-radius:7px; border:1px solid var(--border); background:var(--bg2); color:var(--text2); font-size:12px; cursor:pointer; }
+.pg.on { background:var(--purple); color:#fff; border-color:var(--purple); }
+
+/* Debt bars */
+.debt-row { display:flex; align-items:center; gap:10px; margin-bottom:9px; font-size:12px; }
+.debt-lbl { width:74px; color:var(--text2); flex-shrink:0; }
+.debt-bar { flex:1; height:7px; background:var(--bg3); border-radius:4px; overflow:hidden; }
+.debt-fill { height:100%; border-radius:4px; }
+.debt-sum { font-family:var(--mono); font-size:11.5px; width:90px; text-align:right; flex-shrink:0; }
+
+.split-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.stat-line { display:flex; align-items:center; justify-content:space-between; padding:7px 0; font-size:13px; border-bottom:1px solid var(--border); }
+.stat-line:last-child { border-bottom:none; }
+.big-num { font-family:var(--display); font-weight:700; font-size:30px; letter-spacing:-.02em; }
+
+.skeleton-note { background:rgba(167,139,250,.08); border:1px solid rgba(167,139,250,.25); color:var(--purple); border-radius:var(--r); padding:9px 14px; font-size:12px; margin-bottom:18px; display:flex; align-items:center; gap:9px; }
+
+@media (max-width:1200px){ .kpi-row{grid-template-columns:repeat(3,1fr);} .g-3,.g-2-1{grid-template-columns:1fr;} }
+@media (max-width:720px){ .shell{grid-template-columns:1fr;} .side{display:none;} .kpi-row{grid-template-columns:1fr 1fr;} }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── Sidebar ───────────────────────────────────── -->
+  <aside class="side">
+    <div class="brand"><i class="ti ti-map-pin-filled"></i> TrustMe</div>
+    <button class="nav-btn"><i class="ti ti-home"></i> Главная</button>
+    <button class="nav-btn active"><i class="ti ti-users"></i> Мои клиенты</button>
+    <button class="nav-btn"><i class="ti ti-checklist"></i> Мои задачи <span class="nav-badge">12</span></button>
+    <button class="nav-btn"><i class="ti ti-briefcase"></i> Сделки</button>
+    <button class="nav-btn"><i class="ti ti-refresh"></i> Продления</button>
+    <button class="nav-btn"><i class="ti ti-gift"></i> Freemium</button>
+    <button class="nav-btn"><i class="ti ti-file-text"></i> Отчёты</button>
+    <button class="nav-btn"><i class="ti ti-message-2"></i> Коммуникации</button>
+    <button class="nav-btn"><i class="ti ti-settings"></i> Настройки</button>
+  </aside>
+
+  <!-- ── Main ──────────────────────────────────────── -->
+  <main class="main">
+
+    <div class="topbar">
+      <div class="page-head">
+        <div class="role-num">6</div>
+        <div>
+          <div class="page-title">Account Manager (МОП)</div>
+          <div class="page-sub">Ваши клиенты и задачи</div>
+        </div>
+      </div>
+      <div class="top-right">
+        <div class="cta-card">
+          <i class="ti ti-phone-call"></i>
+          <div><div class="cta-tt">Подготовиться к звонку</div><div class="cta-ss">Открыть Customer 360</div></div>
+        </div>
+        <div class="period-pill"><span class="lbl">Период</span><span class="val">Май 2025 <i class="ti ti-calendar" style="font-size:13px"></i></span></div>
+        <button class="icon-btn"><i class="ti ti-bell"></i><span class="dot"></span></button>
+        <button class="icon-btn"><i class="ti ti-help-circle"></i></button>
+        <div class="user-chip"><span class="user-av">А</span><span style="font-size:13px;font-weight:500">Алия</span><i class="ti ti-chevron-down" style="font-size:14px;color:var(--text3)"></i></div>
+      </div>
+    </div>
+
+    <div class="skeleton-note">
+      <i class="ti ti-flask"></i>
+      Это скелет на тестовых данных. Каждый блок помечен источником — подключим по очереди.
+    </div>
+
+    <!-- KPI row -->
+    <div class="kpi-row">
+      <!-- DATA: Bitrix — кол-во компаний где ответственный = текущий МОП -->
+      <div class="kpi">
+        <div class="kpi-top"><span class="kpi-lbl">Мой портфель</span><span class="kpi-ico"><i class="ti ti-wallet"></i></span></div>
+        <div class="kpi-val">148</div>
+        <div class="kpi-sub up"><i class="ti ti-arrow-up-right"></i> +6 к прошлому месяцу</div>
+      </div>
+      <!-- DATA: Google Sheets (план) — пока заглушка -->
+      <div class="kpi">
+        <div class="kpi-top"><span class="kpi-lbl">Выручка (план)</span><span class="kpi-ico"><i class="ti ti-target"></i></span></div>
+        <div class="kpi-val">65 000 000<span class="cur"> ₸</span></div>
+        <div class="kpi-sub muted">82% от плана</div>
+      </div>
+      <!-- DATA: Bitrix — сумма закрытых сделок МОП за период -->
+      <div class="kpi">
+        <div class="kpi-top"><span class="kpi-lbl">Выручка (факт)</span><span class="kpi-ico"><i class="ti ti-chart-line"></i></span></div>
+        <div class="kpi-val">53 500 000<span class="cur"> ₸</span></div>
+        <div class="kpi-sub up"><i class="ti ti-arrow-up-right"></i> +12% к прошлому месяцу</div>
+      </div>
+      <!-- DATA: Bitrix — открытые сделки МОП -->
+      <div class="kpi">
+        <div class="kpi-top"><span class="kpi-lbl">Активные сделки</span><span class="kpi-ico"><i class="ti ti-businessplan"></i></span></div>
+        <div class="kpi-val">27</div>
+        <div class="kpi-sub up"><i class="ti ti-arrow-up-right"></i> +4 к прошлому месяцу</div>
+      </div>
+      <!-- DATA: Bitrix tasks — просроченные задачи МОП -->
+      <div class="kpi">
+        <div class="kpi-top"><span class="kpi-lbl">Просроченные задачи</span><span class="kpi-ico"><i class="ti ti-clock-exclamation"></i></span></div>
+        <div class="kpi-val" style="color:var(--red)">12</div>
+        <div class="kpi-sub down">Требуют внимания</div>
+      </div>
+      <!-- DATA: PostgreSQL TrustMe — NPS по клиентам МОП -->
+      <div class="kpi">
+        <div class="kpi-top"><span class="kpi-lbl">NPS (мои клиенты)</span><span class="kpi-ico"><i class="ti ti-heart"></i></span></div>
+        <div class="kpi-val">48</div>
+        <div class="kpi-sub down"><i class="ti ti-arrow-down-right"></i> -2 к прошлому месяцу</div>
+      </div>
+    </div>
+
+    <!-- Row 2: tasks / risk / renewals -->
+    <div class="grid g-3" style="margin-bottom:14px">
+
+      <!-- DATA: Bitrix tasks — задачи МОП на сегодня -->
+      <div class="card">
+        <div class="card-h"><span class="card-t">Мои задачи на сегодня</span><a class="card-link">Все задачи (12)</a></div>
+        <div class="task"><span class="task-time">09:30</span><span class="task-txt">Звонок: ТОО «Alpha»</span><span class="pill p-high">Высокий</span></div>
+        <div class="task"><span class="task-time">11:00</span><span class="task-txt">Встреча: ТОО «Beta»</span><span class="pill p-high">Высокий</span></div>
+        <div class="task"><span class="task-time">13:30</span><span class="task-txt">Отправить КП: ТОО «Gamma»</span><span class="pill p-mid">Средний</span></div>
+        <div class="task"><span class="task-time">15:00</span><span class="task-txt">Касание: ТОО «Delta»</span><span class="pill p-mid">Средний</span></div>
+        <div class="task"><span class="task-time">16:30</span><span class="task-txt">Отчёт по продлениям</span><span class="pill p-low">Низкий</span></div>
+      </div>
+
+      <!-- DATA: PostgreSQL tarifs.risk_scores — зоны по клиентам МОП (score<0.3 green, <0.6 yellow, else red) -->
+      <div class="card">
+        <div class="card-h"><span class="card-t">Клиенты в зоне риска</span><a class="card-link">Смотреть список</a></div>
+        <div class="risk-wrap">
+          <div class="risk-chart"><canvas id="riskDonut"></canvas>
+            <div class="risk-center"><span class="n">18</span><span class="l">клиентов</span></div>
+          </div>
+          <div class="risk-legend">
+            <div class="li"><span class="dt" style="background:var(--red)"></span> Высокий риск <span class="meta">6 (2 500 000 ₸)</span></div>
+            <div class="li"><span class="dt" style="background:var(--yellow)"></span> Средний риск <span class="meta">8 (3 200 000 ₸)</span></div>
+            <div class="li"><span class="dt" style="background:var(--accent)"></span> Низкий риск <span class="meta">4 (1 100 000 ₸)</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DATA: Bitrix — сделки воронки "Продление" по МОП, сортировка по дате -->
+      <div class="card">
+        <div class="card-h"><span class="card-t">Ближайшие продления</span><a class="card-link">Все продления</a></div>
+        <div class="ren"><span>ТОО «Alpha»</span><span class="ren-date">25.05.2025</span><span class="ren-sum">350 000 ₸</span></div>
+        <div class="ren"><span>ТОО «Beta»</span><span class="ren-date">27.05.2025</span><span class="ren-sum">250 000 ₸</span></div>
+        <div class="ren"><span>ТОО «Gamma»</span><span class="ren-date">28.05.2025</span><span class="ren-sum">180 000 ₸</span></div>
+        <div class="ren"><span>ТОО «Delta»</span><span class="ren-date">30.05.2025</span><span class="ren-sum">220 000 ₸</span></div>
+        <div class="ren"><span>ТОО «Omega»</span><span class="ren-date">02.06.2025</span><span class="ren-sum">150 000 ₸</span></div>
+      </div>
+    </div>
+
+    <!-- Row 3: clients table (2fr) + debt/freemium (1fr) -->
+    <div class="grid g-2-1">
+
+      <!-- DATA: Bitrix компании МОП + JOIN risk_scores (по company_id/bin) + NPS из PostgreSQL -->
+      <div class="card">
+        <div class="card-h"><span class="card-t">Мои клиенты</span></div>
+        <div class="tbl-tools">
+          <input class="inp" placeholder="🔍 Поиск клиента…" style="flex:1;min-width:140px" />
+          <select class="sel"><option>Статус: Все</option></select>
+          <select class="sel"><option>Зона риска: Все</option></select>
+          <select class="sel"><option>Тип клиента: Все</option></select>
+        </div>
+        <table>
+          <thead><tr><th>Клиент</th><th>Статус</th><th>Зона риска</th><th>Выручка (мес.)</th><th>NPS</th><th>Следующее действие</th><th>Ответственный</th></tr></thead>
+          <tbody>
+            <tr><td>ТОО «Alpha»</td><td><span class="badge b-green">Активный</span></td><td><span class="badge b-zone-red">Высокий</span></td><td class="ren-sum">350 000 ₸</td><td>42</td><td class="cell-date">📅 25.05.2025</td><td><div class="cell-mgr"><span class="mini-av">А</span> Алия</div></td></tr>
+            <tr><td>ТОО «Beta»</td><td><span class="badge b-green">Активный</span></td><td><span class="badge b-zone-red">Высокий</span></td><td class="ren-sum">250 000 ₸</td><td>36</td><td class="cell-date">📅 27.05.2025</td><td><div class="cell-mgr"><span class="mini-av">А</span> Алия</div></td></tr>
+            <tr><td>ТОО «Gamma»</td><td><span class="badge b-green">Активный</span></td><td><span class="badge b-zone-yellow">Средний</span></td><td class="ren-sum">180 000 ₸</td><td>58</td><td class="cell-date">📅 28.05.2025</td><td><div class="cell-mgr"><span class="mini-av">А</span> Алия</div></td></tr>
+            <tr><td>ТОО «Delta»</td><td><span class="badge b-green">Активный</span></td><td><span class="badge b-zone-yellow">Средний</span></td><td class="ren-sum">220 000 ₸</td><td>50</td><td class="cell-date">📅 30.05.2025</td><td><div class="cell-mgr"><span class="mini-av">А</span> Алия</div></td></tr>
+            <tr><td>ТОО «Omega»</td><td><span class="badge b-green">Активный</span></td><td><span class="badge b-zone-green">Низкий</span></td><td class="ren-sum">150 000 ₸</td><td>72</td><td class="cell-date">📅 02.06.2025</td><td><div class="cell-mgr"><span class="mini-av">А</span> Алия</div></td></tr>
+          </tbody>
+        </table>
+        <div class="pager">
+          <button class="pg"><i class="ti ti-chevron-left" style="font-size:13px"></i></button>
+          <button class="pg on">1</button><button class="pg">2</button><button class="pg">3</button>
+          <span style="color:var(--text3);font-size:12px">…</span><button class="pg">10</button>
+          <button class="pg"><i class="ti ti-chevron-right" style="font-size:13px"></i></button>
+        </div>
+      </div>
+
+      <!-- right column: debt + freemium -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <!-- DATA: Google Sheets дебиторка (фильтр по company_id клиентов МОП) -->
+        <div class="card">
+          <div class="card-h"><span class="card-t">Просроченная дебиторская задолженность</span></div>
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px">
+            <span class="big-num" style="color:var(--red)">2 100 000 ₸</span>
+            <span style="color:var(--text3);font-size:12px">3 клиента</span>
+          </div>
+          <div class="debt-row"><span class="debt-lbl">1–30 дней</span><div class="debt-bar"><div class="debt-fill" style="width:100%;background:var(--red)"></div></div><span class="debt-sum">1 100 000 ₸</span></div>
+          <div class="debt-row"><span class="debt-lbl">31–60 дней</span><div class="debt-bar"><div class="debt-fill" style="width:64%;background:var(--orange)"></div></div><span class="debt-sum">700 000 ₸</span></div>
+          <div class="debt-row"><span class="debt-lbl">61–90 дней</span><div class="debt-bar"><div class="debt-fill" style="width:18%;background:var(--yellow)"></div></div><span class="debt-sum">200 000 ₸</span></div>
+          <div class="debt-row"><span class="debt-lbl">90+ дней</span><div class="debt-bar"><div class="debt-fill" style="width:9%;background:var(--purple)"></div></div><span class="debt-sum">100 000 ₸</span></div>
+          <a class="card-link" style="display:inline-block;margin-top:8px">Смотреть детали</a>
+        </div>
+
+        <!-- DATA: Bitrix воронка Freemium Retention (фильтр по МОП) -->
+        <div class="card">
+          <div class="card-h"><span class="card-t">Freemium клиенты</span></div>
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px">
+            <span class="big-num" style="color:var(--accent)">6</span>
+            <span style="color:var(--text3);font-size:12px">клиентов · +1 к прошлому месяцу</span>
+          </div>
+          <div class="stat-line"><span>Активные</span><span class="ren-sum">4</span></div>
+          <div class="stat-line"><span>Неактивные</span><span class="ren-sum">2</span></div>
+          <div class="stat-line"><span>Дней без активности &gt; 14</span><span class="ren-sum">2</span></div>
+          <a class="card-link" style="display:inline-block;margin-top:8px">Смотреть список</a>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// Risk donut — placeholder; real values from PostgreSQL tarifs.risk_scores
+new Chart(document.getElementById('riskDonut'), {
+  type:'doughnut',
+  data:{ datasets:[{ data:[6,8,4], backgroundColor:['#FF5757','#F5C842','#5CF4A0'], borderWidth:0, cutout:'72%' }] },
+  options:{ plugins:{legend:{display:false},tooltip:{enabled:false}}, responsive:true, maintainAspectRatio:false }
+});
+</script>
+</body>
+</html>
