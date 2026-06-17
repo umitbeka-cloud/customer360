@@ -873,6 +873,60 @@ a:hover { text-decoration: underline; }
 .mop-link:hover { text-decoration:underline; }
 @media (max-width:1200px){ .metrics.cols6{grid-template-columns:repeat(3,1fr);} }
 @media (max-width:720px){ .metrics.cols6{grid-template-columns:1fr 1fr;} }
+
+/* ── Customer 360 ─────────────────────────────────────────── */
+.c360-search { display:flex; gap:10px; margin-bottom:16px; }
+.c360-search input { flex:1; background:var(--bg2); border:1px solid var(--border); color:var(--text); border-radius:var(--r); padding:10px 14px; font-family:var(--font); font-size:13px; }
+.c360-search input::placeholder { color:var(--text3); }
+.c360-list-row { display:grid; grid-template-columns:1fr 160px 200px; gap:12px; align-items:center; padding:12px 14px; border:1px solid var(--border); border-radius:var(--r); margin-bottom:8px; cursor:pointer; transition:.15s; background:var(--bg1); }
+.c360-list-row:hover { border-color:var(--accent); background:var(--bg2); }
+.c360-list-name { font-weight:500; font-size:13.5px; }
+.c360-list-bin { font-family:var(--mono); font-size:12px; color:var(--text3); }
+.c360-list-mgr { display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--text2); }
+
+/* card view */
+.c360-back { display:inline-flex; align-items:center; gap:6px; color:var(--text2); font-size:13px; cursor:pointer; margin-bottom:16px; background:none; border:none; font-family:var(--font); }
+.c360-back:hover { color:var(--text); }
+.c360-head { display:flex; align-items:center; gap:16px; padding:18px 20px; background:var(--bg1); border:1px solid var(--border); border-radius:var(--r2); margin-bottom:14px; }
+.c360-avatar { width:56px; height:56px; border-radius:14px; background:linear-gradient(135deg,var(--purple),var(--blue)); display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:700; color:#fff; font-family:var(--display); flex-shrink:0; }
+.c360-head-title { font-family:var(--display); font-weight:700; font-size:22px; display:flex; align-items:center; gap:10px; }
+.c360-head-meta { color:var(--text3); font-size:12.5px; margin-top:5px; display:flex; gap:16px; flex-wrap:wrap; }
+.c360-head-meta i { font-size:13px; margin-right:3px; }
+.c360-status-pill { font-size:11px; font-weight:500; padding:3px 11px; border-radius:20px; background:rgba(92,244,160,.13); color:var(--accent); }
+.c360-grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:14px; }
+.c360-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; font-size:13px; border-bottom:1px solid var(--border); }
+.c360-row:last-child { border-bottom:none; }
+.c360-row .k { color:var(--text3); }
+.c360-row .v { font-weight:500; }
+.c360-func { display:flex; align-items:center; gap:8px; font-size:13px; padding:5px 0; }
+.c360-func i { font-size:16px; }
+.c360-big { font-family:var(--display); font-weight:700; font-size:26px; }
+.c360-note-item { font-size:13px; padding:6px 0 6px 16px; position:relative; color:var(--text2); }
+.c360-note-item::before { content:'•'; position:absolute; left:2px; color:var(--accent); }
+.c360-ai-card { background:linear-gradient(135deg, rgba(167,139,250,.07), rgba(91,158,247,.04)); border:1px solid rgba(167,139,250,.2); }
+.c360-ai-item { display:flex; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); }
+.c360-ai-item:last-child { border-bottom:none; }
+.c360-ai-ico { width:30px; height:30px; border-radius:8px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:16px; }
+.c360-ai-tt { font-weight:500; font-size:13px; margin-bottom:2px; }
+.c360-ai-ds { font-size:12px; color:var(--text3); line-height:1.5; }
+.c360-act-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+.c360-act { text-align:left; }
+.c360-act .n { font-family:var(--display); font-weight:700; font-size:22px; }
+.c360-act .l { font-size:11.5px; color:var(--text3); margin-top:2px; }
+@media (max-width:1100px){ .c360-grid3{grid-template-columns:1fr;} .c360-act-row{grid-template-columns:1fr 1fr;} .c360-list-row{grid-template-columns:1fr;} }
+
+/* ── Head of Customer ─────────────────────────────────────── */
+.hoc-zone-row { display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.hoc-zone-row:last-child { border-bottom:none; }
+.hoc-zone-dot { width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:8px; }
+.hoc-zone-total { font-weight:600; }
+.hoc-tbl { width:100%; border-collapse:collapse; }
+.hoc-tbl th { text-align:left; font-size:11px; font-weight:500; color:var(--text3); padding:9px 10px; border-bottom:1px solid var(--border); }
+.hoc-tbl td { padding:10px; border-bottom:1px solid var(--border); font-size:13px; }
+.hoc-tbl tr:last-child td { border-bottom:none; }
+.hoc-tbl .num { font-family:var(--mono); }
+.hoc-list-row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.hoc-list-row:last-child { border-bottom:none; }
 </style>
 </head>
 <body>
@@ -920,6 +974,12 @@ a:hover { text-decoration: underline; }
     <span class="nav-group-label">Роли</span>
     <button class="nav-btn" onclick="go('mop',this);initMop()">
       <i class="ti ti-user-star"></i> Дашборд МОП
+    </button>
+    <button class="nav-btn" onclick="go('c360',this);initC360()">
+      <i class="ti ti-id-badge-2"></i> Customer 360
+    </button>
+    <button class="nav-btn" onclick="go('hoc',this);initHoc()">
+      <i class="ti ti-heart-handshake"></i> Head of Customer
     </button>
 
     <span class="nav-group-label">Система</span>
@@ -2034,6 +2094,237 @@ a:hover { text-decoration: underline; }
 
     </div><!-- /page-mop -->
 
+    <!-- ════════════════ PAGE: Customer 360 ════════════════ -->
+    <div class="page" id="page-c360">
+
+      <!-- ─── LIST VIEW ─── -->
+      <div id="c360-list-view">
+        <div class="mop-note">
+          <i class="ti ti-flask"></i>
+          Список компаний — живой из Bitrix. Карточка — скелет, данные подложим после маппинг-таблицы.
+        </div>
+        <div class="c360-search">
+          <input id="c360-search-input" placeholder="🔍 Поиск компании по названию…" onkeydown="if(event.key==='Enter')c360Search()" />
+          <button class="btn-secondary" onclick="c360Search()" style="padding:8px 18px">Найти</button>
+        </div>
+        <div id="c360-list-results">
+          <div style="text-align:center;padding:30px;color:var(--text3)">Введите название компании для поиска</div>
+        </div>
+      </div>
+
+      <!-- ─── CARD VIEW (hidden until a company is opened) ─── -->
+      <div id="c360-card-view" style="display:none">
+        <button class="c360-back" onclick="c360BackToList()"><i class="ti ti-arrow-left"></i> Назад к списку</button>
+
+        <!-- Header -->
+        <div class="c360-head">
+          <div class="c360-avatar" id="c360-avatar">—</div>
+          <div style="flex:1">
+            <div class="c360-head-title">
+              <span id="c360-name">—</span>
+              <span class="c360-status-pill" id="c360-status">—</span>
+            </div>
+            <div class="c360-head-meta">
+              <span><i class="ti ti-id"></i>ID: <span id="c360-id">—</span></span>
+              <span><i class="ti ti-building"></i>БИН: <span id="c360-bin">—</span></span>
+              <span><i class="ti ti-phone"></i><span id="c360-phone">—</span></span>
+              <span><i class="ti ti-mail"></i><span id="c360-email">—</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top row: tariff / debt / tone -->
+        <div class="c360-grid3">
+          <!-- DATA: PostgreSQL sign_subscriptions (по company_id uuid) -->
+          <div class="card">
+            <div class="card-title"><i class="ti ti-receipt"></i>Тариф и продление
+              <a class="mop-link" style="margin-left:auto" onclick="c360ShowAllTariffs()">Все тарифы →</a>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:10px">
+              <input id="c360-uuid-input" class="mop-inp" style="flex:1;font-size:11px" placeholder="company_id (uuid) для теста" />
+              <button class="btn-secondary" style="padding:4px 10px;font-size:11px" onclick="c360LoadSubscription()">↻</button>
+            </div>
+            <div class="c360-row"><span class="k">Тариф</span><span class="v" id="c360-tariff">—</span></div>
+            <div class="c360-row"><span class="k">Цена</span><span class="v" id="c360-price">—</span></div>
+            <div class="c360-row"><span class="k">Подписаний</span><span class="v" id="c360-signs">—</span></div>
+            <div class="c360-row"><span class="k">Дата окончания</span><span class="v" id="c360-expire">—</span></div>
+            <div class="c360-row"><span class="k">Осталось</span><span class="v" id="c360-daysleft">—</span></div>
+            <!-- Подключённые функции -->
+            <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+              <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="c360ToggleFeatures()">
+                <span style="font-size:12px;font-weight:500;color:var(--text2)"><i class="ti ti-puzzle" style="font-size:14px;margin-right:5px"></i>Подключённые функции</span>
+                <i class="ti ti-chevron-down" id="c360-feat-chevron" style="font-size:15px;color:var(--text3);transition:.2s"></i>
+              </div>
+              <div id="c360-features-box" style="display:none;margin-top:10px"></div>
+            </div>
+          </div>
+          <!-- DATA: debit.csv (по company_id) -->
+          <div class="card">
+            <div class="card-title"><i class="ti ti-cash-banknote"></i>Дебиторская задолженность</div>
+            <div style="margin:6px 0 14px"><span class="c360-big" style="color:var(--red)" id="c360-debt">109 300 ₸</span> <span class="mop-badge mop-b-red" style="margin-left:6px">Просрочено</span></div>
+            <div class="c360-row"><span class="k">Счёт</span><span class="v">№12345 от 01.06.2026</span></div>
+            <div class="c360-row"><span class="k">Срок оплаты</span><span class="v" style="color:var(--red)">15.06.2026</span></div>
+          </div>
+          <!-- DATA: risk_scores + продукт -->
+          <div class="card">
+            <div class="card-title"><i class="ti ti-mood-smile"></i>Тон клиента</div>
+            <div class="c360-row"><span class="k">Риск оттока</span><span class="v" style="color:var(--accent)" id="c360-risk">Низкий</span></div>
+            <div class="c360-row"><span class="k">Активность</span><span class="v">Высокая</span></div>
+            <div class="c360-row"><span class="k">Использование</span><span class="v">89%</span></div>
+            <div class="c360-row"><span class="k">Потенциал</span><span class="v" style="color:var(--accent)">Есть (апгрейд)</span></div>
+          </div>
+        </div>
+
+        <!-- Middle row: agreements (AI) / info / AI tips -->
+        <div class="c360-grid3">
+          <!-- DATA: AI-анализ чатов Omnidesk (по кнопке) -->
+          <div class="card">
+            <div class="card-title"><i class="ti ti-notes"></i>Последние договорённости</div>
+            <div id="c360-agreements">
+              <div style="text-align:center;padding:18px 0;color:var(--text3)">
+                <div style="font-size:12px;margin-bottom:12px">ИИ проанализирует чаты компании в Omnidesk и выделит ключевые договорённости</div>
+                <button class="btn-secondary" onclick="c360AnalyzeChats()" style="padding:8px 16px"><i class="ti ti-sparkles" style="font-size:14px;margin-right:5px"></i>Анализировать чаты</button>
+              </div>
+            </div>
+          </div>
+          <!-- DATA: Bitrix компания (поля) -->
+          <div class="card">
+            <div class="card-title"><i class="ti ti-info-circle"></i>Информация по клиенту</div>
+            <div class="c360-row"><span class="k">Отрасль</span><span class="v" id="c360-industry">—</span></div>
+            <div class="c360-row"><span class="k">Тип клиента</span><span class="v" id="c360-ctype">—</span></div>
+            <div class="c360-row"><span class="k">Город</span><span class="v" id="c360-city">—</span></div>
+            <div class="c360-row"><span class="k">Ответственный CC</span><span class="v" id="c360-resp-cc">—</span></div>
+            <div class="c360-row"><span class="k">Ответственный ОП</span><span class="v" id="c360-resp-op">—</span></div>
+          </div>
+          <!-- DATA: Claude AI-подсказки -->
+          <div class="card c360-ai-card">
+            <div class="card-title"><i class="ti ti-sparkles" style="color:var(--purple)"></i>AI-подсказки</div>
+            <div class="c360-ai-item">
+              <div class="c360-ai-ico" style="background:rgba(92,244,160,.13);color:var(--accent)"><i class="ti ti-trending-up"></i></div>
+              <div><div class="c360-ai-tt">Высокая вероятность продления</div><div class="c360-ai-ds">Клиент активно использует сервис (89%) и регулярно подписывает документы.</div></div>
+            </div>
+            <div class="c360-ai-item">
+              <div class="c360-ai-ico" style="background:rgba(245,200,66,.13);color:var(--yellow)"><i class="ti ti-bulb"></i></div>
+              <div><div class="c360-ai-tt">Рекомендуемый апгрейд</div><div class="c360-ai-ds">Предложите переход на тариф БГ1200 — текущего лимита может не хватить.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom: product activity -->
+        <!-- DATA: PostgreSQL (активность по продукту) -->
+        <div class="card">
+          <div class="card-title"><i class="ti ti-chart-bar"></i>Активность по продукту (за 30 дней)</div>
+          <div class="c360-act-row">
+            <div class="c360-act"><div class="n">420</div><div class="l">Документов подписано</div></div>
+            <div class="c360-act"><div class="n">18</div><div class="l">Пользователей</div></div>
+            <div class="c360-act"><div class="n">2 мин</div><div class="l">Среднее время подписания</div></div>
+            <div class="c360-act"><div class="n">2</div><div class="l">Обращений в поддержку</div></div>
+          </div>
+        </div>
+
+      </div><!-- /card-view -->
+
+    </div><!-- /page-c360 -->
+
+    <!-- ════════════════ PAGE: Head of Customer ════════════════ -->
+    <div class="page" id="page-hoc">
+
+      <div class="mop-note">
+        <i class="ti ti-flask"></i>
+        Скелет на тестовых данных. Зоны риска — живые из risk_scores. Остальное подключим по очереди.
+      </div>
+
+      <!-- 4 KPI -->
+      <div class="metrics">
+        <!-- DATA: Bitrix воронка Customer Success / продления -->
+        <div class="metric">
+          <i class="ti ti-refresh met-icon" style="color:var(--accent)"></i>
+          <div class="met-val" style="font-size:22px">32 450 000 ₸</div>
+          <div class="met-lbl">Продления в этом месяце</div>
+          <div class="met-delta delta-up"><i class="ti ti-arrow-up-right"></i> +11% за месяц</div>
+        </div>
+        <!-- DATA: расчёт оттока (формула нужна от бизнеса) -->
+        <div class="metric">
+          <i class="ti ti-trending-down met-icon" style="color:var(--red)"></i>
+          <div class="met-val">3.6%</div>
+          <div class="met-lbl">Churn (отток)</div>
+          <div class="met-delta delta-up"><i class="ti ti-arrow-down-right"></i> -0.4% за месяц</div>
+        </div>
+        <!-- DATA: PostgreSQL risk_scores (red+yellow) -->
+        <div class="metric">
+          <i class="ti ti-alert-triangle met-icon" style="color:var(--orange)"></i>
+          <div class="met-val" id="hoc-kpi-risk" style="color:var(--orange)">—</div>
+          <div class="met-lbl">Клиенты в зоне риска</div>
+          <div class="met-delta" style="color:var(--text3)" id="hoc-kpi-risk-sub">красная + жёлтая</div>
+        </div>
+        <!-- DATA: админка TrustMe (формула нужна) -->
+        <div class="metric">
+          <i class="ti ti-rocket met-icon" style="color:var(--blue)"></i>
+          <div class="met-val">78%</div>
+          <div class="met-lbl">Activation Rate</div>
+          <div class="met-delta delta-up"><i class="ti ti-arrow-up-right"></i> +6% за месяц</div>
+        </div>
+      </div>
+
+      <!-- Row: деньги под риском / динамика churn -->
+      <div class="grid2">
+        <!-- DATA: PostgreSQL risk_scores + debit.csv (суммы) -->
+        <div class="card">
+          <div class="card-title"><i class="ti ti-coins"></i>Деньги под риском</div>
+          <div class="hoc-zone-row">
+            <span><span class="hoc-zone-dot" style="background:var(--red)"></span>Красная зона</span>
+            <span class="num" id="hoc-red-count">—</span>
+            <span class="num" style="color:var(--red)" id="hoc-red-sum">—</span>
+          </div>
+          <div class="hoc-zone-row">
+            <span><span class="hoc-zone-dot" style="background:var(--yellow)"></span>Жёлтая зона</span>
+            <span class="num" id="hoc-yellow-count">—</span>
+            <span class="num" style="color:var(--yellow)" id="hoc-yellow-sum">—</span>
+          </div>
+          <div class="hoc-zone-row hoc-zone-total">
+            <span>Всего</span>
+            <span class="num" id="hoc-total-count">—</span>
+            <span class="num" id="hoc-total-sum">—</span>
+          </div>
+        </div>
+        <!-- DATA: расчёт churn по месяцам -->
+        <div class="card">
+          <div class="card-title"><i class="ti ti-chart-line"></i>Динамика Churn</div>
+          <div style="height:200px"><canvas id="hocChurnChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Row: KPI менеджеров / клиенты в красной зоне -->
+      <div class="grid2" style="grid-template-columns:2fr 1fr">
+        <!-- DATA: агрегат по менеджерам (Bitrix + plan + risk + NPS) -->
+        <div class="card">
+          <div class="card-title"><i class="ti ti-users-group"></i>KPI менеджеров</div>
+          <table class="hoc-tbl">
+            <thead><tr><th>Менеджер</th><th>Продления</th><th>Дебиторка</th><th>Риски</th><th>NPS</th><th>KPI</th></tr></thead>
+            <tbody>
+              <tr><td>Алия</td><td class="num">6 200 000 ₸</td><td class="num">2 100 000 ₸</td><td class="num" style="color:var(--red)">3</td><td class="num">62</td><td class="num">92%</td></tr>
+              <tr><td>Дамир</td><td class="num">5 600 000 ₸</td><td class="num">1 500 000 ₸</td><td class="num" style="color:var(--orange)">2</td><td class="num">55</td><td class="num">87%</td></tr>
+              <tr><td>Назгуль</td><td class="num">4 950 000 ₸</td><td class="num">1 100 000 ₸</td><td class="num" style="color:var(--red)">4</td><td class="num">48</td><td class="num">80%</td></tr>
+              <tr><td>Серик</td><td class="num">3 400 000 ₸</td><td class="num">900 000 ₸</td><td class="num" style="color:var(--orange)">2</td><td class="num">60</td><td class="num">78%</td></tr>
+              <tr><td>Мадина</td><td class="num">2 100 000 ₸</td><td class="num">700 000 ₸</td><td class="num">1</td><td class="num">58</td><td class="num">75%</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- DATA: risk_scores (топ по score) + debit -->
+        <div class="card">
+          <div class="card-title"><i class="ti ti-flame"></i>Клиенты в красной зоне</div>
+          <div id="hoc-red-list">
+            <div class="hoc-list-row"><span>ТОО «Alpha»</span><span class="num" style="color:var(--red)">1 600 000 ₸</span></div>
+            <div class="hoc-list-row"><span>ТОО «Beta»</span><span class="num" style="color:var(--red)">1 250 000 ₸</span></div>
+            <div class="hoc-list-row"><span>ТОО «Gamma»</span><span class="num" style="color:var(--red)">960 000 ₸</span></div>
+            <div class="hoc-list-row"><span>ТОО «Delta»</span><span class="num" style="color:var(--red)">750 000 ₸</span></div>
+            <div class="hoc-list-row"><span>ТОО «Omega»</span><span class="num" style="color:var(--red)">650 000 ₸</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /page-hoc -->
+
   </main>
 </div>
 
@@ -2103,6 +2394,8 @@ const pageTitles = {
   report:   ['AI-Отчёт', 'Генерация отчётов через Claude AI'],
   bitrix:   ['Bitrix24 CRM', 'Сделки, воронки и аналитика продаж'],
   mop:      ['Account Manager (МОП)', 'Ваши клиенты и задачи'],
+  c360:     ['Customer 360', 'Полная карточка клиента'],
+  hoc:      ['Head of Customer', 'Дашборд Customer Success'],
   setup:    ['Настройки', 'Подключение, экспорт данных и конфигурация агента'],
 };
 function go(name, btn) {
@@ -5954,6 +6247,271 @@ let _bxInited = false;
 let _bxDeals  = [];
 
 // ═══════════════ МОП dashboard ═══════════════
+// ═══════════════ Customer 360 ═══════════════
+// ═══════════════ Head of Customer ═══════════════
+let hocChurnChart = null;
+function initHoc() {
+  // Churn trend — placeholder data (real churn formula TBD by business)
+  const el = document.getElementById('hocChurnChart');
+  if (el) {
+    if (hocChurnChart) { hocChurnChart.destroy(); hocChurnChart = null; }
+    hocChurnChart = new Chart(el, {
+      type: 'line',
+      data: {
+        labels: ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'],
+        datasets: [{ data: [3.2,3.4,2.9,3.5,3.1,3.3,3.6,3.2,3.4,2.9,3.3,4.1],
+          borderColor: '#5B9EF7', backgroundColor: 'rgba(91,158,247,0.08)',
+          fill: true, tension: 0.35, pointRadius: 3, borderWidth: 2 }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#5E6078', font: { size: 10, family: "'DM Mono'" } } },
+          y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#5E6078', font: { size: 10 }, callback: v => v + '%' } }
+        },
+        responsive: true, maintainAspectRatio: false
+      }
+    });
+  }
+  loadHocRiskZones();
+}
+
+// Real risk zones for Head of Customer (counts + KPI)
+async function loadHocRiskZones() {
+  const set = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+  const h = getPgHeaders();
+  if (!h['x-pg-host'] || !h['x-pg-database'] || !h['x-pg-user']) {
+    toast('Подключи базу тарифов для зон риска', 'warn');
+    return;
+  }
+  try {
+    const resp = await fetch('/api/pg/risk-zones', { headers: h });
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.error || 'Ошибка запроса');
+    // KPI: red + yellow
+    set('hoc-kpi-risk', (d.red + d.yellow));
+    set('hoc-kpi-risk-sub', `красная ${d.red} · жёлтая ${d.yellow}`);
+    // "Деньги под риском" block (counts real; sums need debit join → later)
+    set('hoc-red-count', d.red);
+    set('hoc-yellow-count', d.yellow);
+    set('hoc-total-count', d.red + d.yellow);
+    set('hoc-red-sum', '—');
+    set('hoc-yellow-sum', '—');
+    set('hoc-total-sum', '—');
+  } catch(e) {
+    console.error('[HoC/RiskZones]', e.message);
+    toast('Зоны риска: ' + e.message, 'err');
+  }
+}
+
+function initC360() {
+  // show list view by default
+  c360BackToList();
+}
+
+function c360BackToList() {
+  const lv = document.getElementById('c360-list-view');
+  const cv = document.getElementById('c360-card-view');
+  if (lv) lv.style.display = '';
+  if (cv) cv.style.display = 'none';
+}
+
+async function c360Search() {
+  const q = (document.getElementById('c360-search-input')?.value || '').trim();
+  const box = document.getElementById('c360-list-results');
+  if (!box) return;
+  if (!q) { box.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3)">Введите название компании для поиска</div>`; return; }
+
+  const portal = (localStorage.getItem('bx_portal') || '').trim().replace(/\/$/, '');
+  const token  = (localStorage.getItem('bx_token')  || '').trim();
+  if (!portal || !token) { toast('Подключи Bitrix24 в Настройках', 'warn'); return; }
+
+  box.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3)"><span class="spinner" style="display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.15);border-top-color:var(--accent);animation:spin .7s linear infinite;margin-right:8px"></span>Поиск…</div>`;
+  try {
+    const resp = await fetch(`/api/bitrix/company-search?q=${encodeURIComponent(q)}`, {
+      headers: { 'x-bx-portal': portal, 'x-bx-token': token }
+    });
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.error || 'Ошибка запроса');
+    const list = d.companies || [];
+    if (!list.length) { box.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3)">Ничего не найдено</div>`; return; }
+    box.innerHTML = list.map(c => {
+      const mgr = c.manager || ('ID ' + c.assigned_by);
+      const initial = (mgr || '?').trim().charAt(0).toUpperCase();
+      const payload = encodeURIComponent(JSON.stringify(c));
+      return `<div class="c360-list-row" onclick="c360OpenCompany('${payload}')">
+        <div class="c360-list-name">${escapeHtml(c.title || '—')}</div>
+        <div class="c360-list-bin">${escapeHtml(c.bin || '—')}</div>
+        <div class="c360-list-mgr"><span class="mop-mini-av">${escapeHtml(initial)}</span> ${escapeHtml(mgr)}</div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    console.error('[C360/Search]', e.message);
+    box.innerHTML = `<div style="text-align:center;padding:30px;color:var(--red)">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function c360OpenCompany(payload) {
+  let c;
+  try { c = JSON.parse(decodeURIComponent(payload)); } catch { return; }
+  // switch to card view
+  document.getElementById('c360-list-view').style.display = 'none';
+  document.getElementById('c360-card-view').style.display = '';
+
+  // fill header from Bitrix data we have; rest are placeholders until mapping table
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const name = c.title || '—';
+  set('c360-name', name);
+  set('c360-avatar', (name || '?').trim().charAt(0).toUpperCase());
+  set('c360-id', c.id || '—');
+  set('c360-bin', c.bin || '—');
+  set('c360-status', 'Активный клиент');
+  set('c360-resp-cc', c.manager || '—');
+  set('c360-resp-op', c.manager || '—');
+  // phone/email/tariff/debt/risk stay as placeholders for now
+  // store current company for the AI analysis button
+  window._c360current = c;
+
+  // reset detail fields then fetch full company detail from Bitrix
+  ['c360-phone','c360-email','c360-industry','c360-ctype','c360-city'].forEach(id => set(id, '…'));
+  c360LoadCompanyDetail(c.id);
+}
+
+// Pull full company fields from Bitrix (phone, email, industry, city)
+async function c360LoadCompanyDetail(companyId) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val || '—'; };
+  if (!companyId) return;
+  const portal = (localStorage.getItem('bx_portal') || '').trim().replace(/\/$/, '');
+  const token  = (localStorage.getItem('bx_token')  || '').trim();
+  if (!portal || !token) return;
+  try {
+    const resp = await fetch(`/api/bitrix/company-detail?id=${encodeURIComponent(companyId)}`, {
+      headers: { 'x-bx-portal': portal, 'x-bx-token': token }
+    });
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.error || 'Ошибка запроса');
+    set('c360-phone', d.phone);
+    set('c360-email', d.email);
+    set('c360-industry', d.industry);
+    set('c360-city', d.city);
+    set('c360-ctype', d.company_type === 'CUSTOMER' ? 'Клиент' : (d.company_type || '—'));
+    // if BIN appears in a UF field, show it in the header
+    if (d.uf_fields) {
+      const binKey = Object.keys(d.uf_fields).find(k => {
+        const v = d.uf_fields[k];
+        return typeof v === 'string' && /^\d{12}$/.test(v); // BIN/IIN = 12 digits
+      });
+      if (binKey) set('c360-bin', d.uf_fields[binKey]);
+    }
+  } catch(e) {
+    console.error('[C360/Detail]', e.message);
+    ['c360-phone','c360-email','c360-industry','c360-ctype','c360-city'].forEach(id => set(id, '—'));
+  }
+}
+
+// Load subscription/tariff from sign_subscriptions by company_id (uuid)
+async function c360LoadSubscription() {
+  const uuid = (document.getElementById('c360-uuid-input')?.value || '').trim();
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  if (!uuid) { toast('Введите company_id (uuid)', 'warn'); return; }
+
+  const h = getPgHeaders();
+  if (!h['x-pg-host'] || !h['x-pg-database'] || !h['x-pg-user']) {
+    toast('Подключи базу тарифов в Настройках', 'warn'); return;
+  }
+  try {
+    set('c360-tariff', '…');
+    const resp = await fetch(`/api/pg/subscription?company_id=${encodeURIComponent(uuid)}`, { headers: h });
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.error || 'Ошибка запроса');
+    if (!d.found) {
+      set('c360-tariff', 'не найдено');
+      set('c360-price', '—'); set('c360-signs', '—'); set('c360-expire', '—'); set('c360-daysleft', '—');
+      return;
+    }
+    set('c360-tariff', d.is_frozen ? `${d.tarif_name} (заморожен)` : (d.tarif_name || '—'));
+    set('c360-price', d.price != null ? fmtMoney(d.price) : '—');
+    set('c360-signs', d.sign_count != null ? d.sign_count : '—');
+    // format expiration date
+    let expText = '—';
+    if (d.expiration_date) {
+      const dt = new Date(d.expiration_date);
+      expText = dt.toLocaleDateString('ru-RU');
+    }
+    set('c360-expire', expText);
+    // days left
+    const dl = document.getElementById('c360-daysleft');
+    if (dl) {
+      if (d.days_left == null) { dl.textContent = '—'; }
+      else if (d.days_left < 0) { dl.textContent = `просрочено на ${-d.days_left} дн.`; dl.style.color = 'var(--red)'; }
+      else { dl.textContent = `через ${d.days_left} дн.`; dl.style.color = d.days_left <= 14 ? 'var(--orange)' : 'var(--text)'; }
+    }
+  } catch(e) {
+    console.error('[C360/Subscription]', e.message);
+    set('c360-tariff', 'ошибка');
+    toast('Тариф: ' + e.message, 'err');
+  }
+}
+
+// Toggle + load the product features catalog
+let _c360featuresCache = null;
+async function c360ToggleFeatures() {
+  const box = document.getElementById('c360-features-box');
+  const chev = document.getElementById('c360-feat-chevron');
+  if (!box) return;
+  const isOpen = box.style.display !== 'none';
+  if (isOpen) {
+    box.style.display = 'none';
+    if (chev) chev.style.transform = '';
+    return;
+  }
+  box.style.display = 'block';
+  if (chev) chev.style.transform = 'rotate(180deg)';
+
+  if (!_c360featuresCache) {
+    box.innerHTML = `<div style="color:var(--text3);font-size:12px;padding:6px 0">Загрузка…</div>`;
+    try {
+      const resp = await fetch('/api/features');
+      const d = await resp.json();
+      if (!resp.ok) throw new Error(d.error || 'Ошибка');
+      _c360featuresCache = d.features || [];
+    } catch(e) {
+      box.innerHTML = `<div style="color:var(--red);font-size:12px">${escapeHtml(e.message)}</div>`;
+      return;
+    }
+  }
+  // NOTE: which features a company actually has needs the mapping table.
+  // For now we list the full catalog as reference.
+  box.innerHTML = `
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Каталог функций (${_c360featuresCache.length}). Какие включены у компании — подключим после маппинга.</div>
+    <div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto">
+      ${_c360featuresCache.map(f => `
+        <div style="display:flex;align-items:flex-start;gap:8px;font-size:12px">
+          <i class="ti ti-circle-dashed" style="font-size:14px;color:var(--text3);margin-top:2px;flex-shrink:0"></i>
+          <div>
+            <span style="font-weight:500">${escapeHtml(f.name)}</span>
+            <span class="mop-badge" style="background:var(--bg3);color:var(--text3);margin-left:5px;font-size:9px">${escapeHtml(f.type)}</span>
+            ${f.desc ? `<div style="color:var(--text3);font-size:11px;margin-top:1px">${escapeHtml(f.desc)}</div>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// Stub: show all tariffs of the company (needs mapping/history later)
+function c360ShowAllTariffs() {
+  toast('Все тарифы компании подключим после маппинг-таблицы', 'warn');
+}
+
+function c360AnalyzeChats() {
+  const box = document.getElementById('c360-agreements');
+  if (!box) return;
+  // placeholder — wiring to Omnidesk chat AI analysis comes after mapping table
+  box.innerHTML = `<div style="text-align:center;padding:18px 0;color:var(--text3);font-size:12px">
+    ИИ-анализ чатов Omnidesk подключим после маппинг-таблицы (нужна связь компания → omni_id).
+  </div>`;
+  toast('ИИ-анализ подключим после маппинг-таблицы', 'warn');
+}
+
 let mopRiskChart = null;
 function initMop() {
   // Each block is independent — one failure must not block the others.

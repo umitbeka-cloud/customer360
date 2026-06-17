@@ -564,6 +564,96 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ── GET /api/pg/subscription?company_id=<uuid> ───────────
+  //  Active/last subscription for a company from sign_subscriptions.
+  //  Lives in tariffs DB → uses pg-* headers. No mapping table needed.
+  if (req.method === 'GET' && pathname === '/api/pg/subscription') {
+    if (!Pool) return json(res, 503, { error: 'pg not installed. Run: npm install pg' });
+    const h = req.headers;
+    if (!h['x-pg-host'] || !h['x-pg-database'] || !h['x-pg-user'])
+      return json(res, 400, { error: 'Missing PostgreSQL credentials' });
+
+    const u = new URL(req.url, `http://localhost:${PORT}`);
+    const companyId = (u.searchParams.get('company_id') || '').trim();
+    if (!companyId) return json(res, 400, { error: 'company_id (uuid) required' });
+
+    try {
+      const pool = getPgPool(
+        h['x-pg-host'], h['x-pg-port']||'5432',
+        h['x-pg-database'], h['x-pg-user'],
+        h['x-pg-password']||'', h['x-pg-ssl']||'false'
+      );
+      // prefer active, non-deleted; fall back to most recent
+      const result = await pool.query(`
+        SELECT tarif_name, prise, sign_count, expiration_date, is_active,
+               is_frozen, frozen_date, date_add, created_at
+        FROM sign_subscriptions
+        WHERE company_id = $1 AND (is_deleted IS NULL OR is_deleted = false)
+        ORDER BY is_active DESC NULLS LAST, expiration_date DESC NULLS LAST
+        LIMIT 1
+      `, [companyId]);
+
+      if (!result.rows.length) {
+        return json(res, 200, { found: false, company_id: companyId });
+      }
+      const r = result.rows[0];
+      // days left until expiration
+      let daysLeft = null;
+      if (r.expiration_date) {
+        const exp = new Date(r.expiration_date);
+        daysLeft = Math.ceil((exp - new Date()) / (1000*60*60*24));
+      }
+      return json(res, 200, {
+        found: true,
+        company_id: companyId,
+        tarif_name: r.tarif_name,
+        price: r.prise ? parseInt(r.prise) : null,
+        sign_count: r.sign_count ? parseInt(r.sign_count) : null,
+        expiration_date: r.expiration_date,
+        days_left: daysLeft,
+        is_active: r.is_active,
+        is_frozen: r.is_frozen,
+        date_add: r.date_add,
+      });
+    } catch(e) {
+      console.error('[PG/Subscription]', e.message);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/features ────────────────────────────────────
+  //  Reads trustme_features.csv (next to server.js) — catalog of all
+  //  product features/feature-flags. UTF-8, comma-separated.
+  if (req.method === 'GET' && pathname === '/api/features') {
+    const csvPath = path.join(__dirname, 'trustme_features.csv');
+    try {
+      if (!fs.existsSync(csvPath)) {
+        return json(res, 404, { error: 'trustme_features.csv не найден рядом с server.js' });
+      }
+      let text = fs.readFileSync(csvPath).toString('utf8').replace(/^\uFEFF/, '');
+      function parseCsvLine(line) {
+        const out = []; let cur = ''; let inQ = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+          else if (ch === ',' && !inQ) { out.push(cur); cur = ''; }
+          else cur += ch;
+        }
+        out.push(cur); return out;
+      }
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const p = parseCsvLine(lines[i]);
+        rows.push({ name: (p[0]||'').trim(), type: (p[1]||'').trim(), desc: (p[2]||'').trim(), code: (p[3]||'').trim() });
+      }
+      return json(res, 200, { count: rows.length, features: rows });
+    } catch(e) {
+      console.error('[Features]', e.message);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/mop/plan?assigned=<id> ──────────────────────
   //  Reads plan_mop_june.csv (next to server.js), format:
   //  Имя;id_bitrix;План;Факт   (semicolon-separated, windows-1251)
@@ -990,6 +1080,107 @@ const server = http.createServer(async (req, res) => {
           manager: usersMap[c.ASSIGNED_BY_ID] || ('ID ' + c.ASSIGNED_BY_ID),
           date_create: c.DATE_CREATE,
         })),
+      });
+    } catch(e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
+
+  // ── GET /api/bitrix/company-search?q=<text> ──────────────
+  //  Search companies by title (substring). Returns up to 30 with manager name.
+  if (req.method === 'GET' && pathname === '/api/bitrix/company-search') {
+    const portal = (req.headers['x-bx-portal'] || '').trim().replace(/\/$/, '');
+    const token  = (req.headers['x-bx-token']  || '').trim();
+    if (!portal || !token) return json(res, 400, { error: 'Missing x-bx-portal or x-bx-token' });
+
+    const u = new URL(req.url, `http://localhost:${PORT}`);
+    const q = (u.searchParams.get('q') || '').trim();
+    if (!q) return json(res, 400, { error: 'q (search text) required' });
+
+    try {
+      // Bitrix substring filter: filter[%TITLE]=text
+      const first = await bxFetchCompanyPage(portal, token, 0, { '%TITLE': q });
+      const companies = (first.result || []).slice(0, 30);
+
+      let usersMap = {};
+      try { usersMap = await bxFetchUsersMap(portal, token); }
+      catch(e) { console.error('[BX users]', e.message); }
+
+      return json(res, 200, {
+        query: q,
+        total: first.total || companies.length,
+        companies: companies.map(c => ({
+          id: c.ID,
+          title: c.TITLE,
+          bin: '',  // BIN lives in a UF_CRM_* field — wire up once field name is known
+          assigned_by: c.ASSIGNED_BY_ID,
+          manager: usersMap[c.ASSIGNED_BY_ID] || ('ID ' + c.ASSIGNED_BY_ID),
+        })),
+      });
+    } catch(e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
+
+  // ── GET /api/bitrix/company-detail?id=<id> ───────────────
+  //  Full fields of one company via crm.company.get: phones, emails,
+  //  industry, address. Also resolves manager name and lists UF_ fields
+  //  (so we can later spot the BIN field).
+  if (req.method === 'GET' && pathname === '/api/bitrix/company-detail') {
+    const portal = (req.headers['x-bx-portal'] || '').trim().replace(/\/$/, '');
+    const token  = (req.headers['x-bx-token']  || '').trim();
+    if (!portal || !token) return json(res, 400, { error: 'Missing x-bx-portal or x-bx-token' });
+
+    const u = new URL(req.url, `http://localhost:${PORT}`);
+    const id = (u.searchParams.get('id') || '').trim();
+    if (!id) return json(res, 400, { error: 'id (company id) required' });
+
+    try {
+      const parsed = new URL(portal);
+      const options = {
+        hostname: parsed.hostname,
+        path:     `/rest/${token}/crm.company.get.json?id=${encodeURIComponent(id)}`,
+        method:   'GET',
+        headers:  { 'Accept': 'application/json' },
+      };
+      const { status, body } = await httpsRequest(options, null);
+      if (status !== 200) {
+        let msg = body; try { msg = JSON.parse(body)?.error_description || body; } catch {}
+        return json(res, 502, { error: `Bitrix24 HTTP ${status}: ${msg}` });
+      }
+      const c = JSON.parse(body).result || {};
+
+      // multi-fields: PHONE / EMAIL are arrays of { VALUE, VALUE_TYPE }
+      const firstVal = (arr) => Array.isArray(arr) && arr.length ? (arr[0].VALUE || '') : '';
+      const phone = firstVal(c.PHONE);
+      const email = firstVal(c.EMAIL);
+
+      // industry comes as a code (e.g. "IT", "MANUFACTURING"); map common ones
+      const INDUSTRY = {
+        IT:'IT', TELECOM:'Телеком', MANUFACTURING:'Производство', BANKING:'Банки',
+        CONSULTING:'Консалтинг', FINANCE:'Финансы', GOVERNMENT:'Госсектор',
+        DELIVERY:'Доставка', ENTERTAINMENT:'Развлечения', NOTPROFIT:'НКО',
+        TRADE:'Торговля', BUILDING:'Строительство', EDUCATION:'Образование',
+        MEDICINE:'Медицина', LAW:'Юр. услуги',
+      };
+      const industry = INDUSTRY[c.INDUSTRY] || c.INDUSTRY || '';
+
+      // address: collect city/region if present
+      const city = c.ADDRESS_CITY || c.REG_ADDRESS_CITY || '';
+
+      // collect UF_ fields (so BIN can be spotted later)
+      const ufFields = {};
+      Object.keys(c).forEach(k => { if (k.startsWith('UF_')) ufFields[k] = c[k]; });
+
+      return json(res, 200, {
+        id: c.ID,
+        title: c.TITLE,
+        phone, email, industry, city,
+        company_type: c.COMPANY_TYPE || '',
+        revenue_field: c.REVENUE || '',
+        assigned_by: c.ASSIGNED_BY_ID,
+        date_create: c.DATE_CREATE,
+        uf_fields: ufFields,   // for spotting BIN field name
       });
     } catch(e) {
       return json(res, 502, { error: e.message });
