@@ -22,20 +22,23 @@ let Pool;
 try { Pool = require('pg').Pool; }
 catch(e) { console.warn('⚠️  pg not found. Run: npm install pg'); }
 
-let pgPool = null, pgPoolKey = '';
+// One pool PER database key — different DBs (tariffs, TrustMe) must not evict
+// each other. Evicting a pool mid-request caused "Cannot use a pool after end".
+const pgPools = new Map();
 function getPgPool(host, port, database, user, password, ssl) {
   const key = `${host}:${port}:${database}:${user}`;
-  if (pgPool && pgPoolKey === key) return pgPool;
-  if (pgPool) pgPool.end().catch(() => {});
-  pgPool = new Pool({
+  let pool = pgPools.get(key);
+  if (pool) return pool;
+  pool = new Pool({
     host, port: parseInt(port)||5432, database, user, password,
     ssl: ssl === 'true' ? { rejectUnauthorized: false } : false,
     connectionTimeoutMillis: 8000, max: 3,
-    // Устанавливаем search_path чтобы schema contract была доступна по умолчанию
+    // search_path so 'contract' (TrustMe NPS/CSAT) and 'public' (tariffs) both resolve
     options: '--search_path=contract,public',
   });
-  pgPoolKey = key;
-  return pgPool;
+  pool.on('error', (e) => console.error('[PG pool]', key, e.message));
+  pgPools.set(key, pool);
+  return pool;
 }
 
 const PORT = process.env.PORT || 3000;
@@ -501,6 +504,285 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ── Risk zones: risk_scores (public) ───────────────────────
+  //  score < 0.3        → green
+  //  0.3 <= score < 0.6 → yellow
+  //  score >= 0.6       → red
+  //  Optional ?assigned=<bitrix_id> reserved for future per-MOP filtering.
+  if (req.method === 'GET' && pathname === '/api/pg/risk-zones') {
+    if (!Pool) return json(res, 503, { error: 'pg not installed. Run: npm install pg' });
+    const h = req.headers;
+    if (!h['x-pg-host'] || !h['x-pg-database'] || !h['x-pg-user'])
+      return json(res, 400, { error: 'Missing PostgreSQL credentials' });
+    try {
+      const pool = getPgPool(
+        h['x-pg-host'], h['x-pg-port']||'5432',
+        h['x-pg-database'], h['x-pg-user'],
+        h['x-pg-password']||'', h['x-pg-ssl']||'false'
+      );
+
+      // Aggregate counts per zone. Each company may have multiple rows over time,
+      // so take the latest score per company_id via DISTINCT ON.
+      const aggResult = await pool.query(`
+        WITH latest AS (
+          SELECT DISTINCT ON (company_id) company_id, score
+          FROM risk_scores
+          ORDER BY company_id, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        )
+        SELECT
+          COUNT(*) FILTER (WHERE score < 0.3)                  AS green,
+          COUNT(*) FILTER (WHERE score >= 0.3 AND score < 0.6) AS yellow,
+          COUNT(*) FILTER (WHERE score >= 0.6)                 AS red,
+          COUNT(*)                                             AS total
+        FROM latest
+      `);
+
+      // Top risky companies (highest score) for the "Топ рисков" block
+      const topResult = await pool.query(`
+        WITH latest AS (
+          SELECT DISTINCT ON (company_id) company_id, score, updated_at
+          FROM risk_scores
+          ORDER BY company_id, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        )
+        SELECT company_id, score
+        FROM latest
+        ORDER BY score DESC
+        LIMIT 10
+      `);
+
+      const a = aggResult.rows[0] || {};
+      return json(res, 200, {
+        green:  parseInt(a.green)  || 0,
+        yellow: parseInt(a.yellow) || 0,
+        red:    parseInt(a.red)    || 0,
+        total:  parseInt(a.total)  || 0,
+        top:    topResult.rows.map(r => ({ company_id: r.company_id, score: parseFloat(r.score) })),
+      });
+    } catch(e) {
+      console.error('[PG/RiskZones]', e.message);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/mop/plan?assigned=<id> ──────────────────────
+  //  Reads plan_mop_june.csv (next to server.js), format:
+  //  Имя;id_bitrix;План;Факт   (semicolon-separated, windows-1251)
+  //  Returns plan/fact for a given manager id, or the whole list.
+  if (req.method === 'GET' && pathname === '/api/mop/plan') {
+    const u = new URL(req.url, `http://localhost:${PORT}`);
+    const assigned = (u.searchParams.get('assigned') || '').trim();
+    const csvPath = path.join(__dirname, 'plan_mop_june.csv');
+
+    try {
+      if (!fs.existsSync(csvPath)) {
+        return json(res, 404, { error: 'plan_mop_june.csv не найден рядом с server.js' });
+      }
+      const buf = fs.readFileSync(csvPath);
+      // file is windows-1251 encoded
+      const text = new TextDecoder('windows-1251').decode(buf);
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+
+      // skip header; parse rows: name ; id ; plan ; fact
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(';');
+        if (parts.length < 4) continue;
+        const name = (parts[0] || '').trim();
+        const id   = (parts[1] || '').trim();
+        // strip spaces used as thousand separators, keep digits only
+        const plan = parseInt((parts[2] || '').replace(/\D/g, ''), 10) || 0;
+        const fact = parseInt((parts[3] || '').replace(/\D/g, ''), 10) || 0;
+        if (!id) continue;
+        rows.push({ name, id, plan, fact });
+      }
+
+      if (assigned) {
+        const row = rows.find(r => r.id === assigned);
+        if (!row) return json(res, 200, { found: false, assigned, plan: 0, fact: 0 });
+        return json(res, 200, {
+          found: true,
+          assigned,
+          name: row.name,
+          plan: row.plan,
+          fact: row.fact,
+          percent: row.plan ? Math.round(row.fact / row.plan * 100) : 0,
+        });
+      }
+      return json(res, 200, { rows });
+    } catch(e) {
+      console.error('[MOP/Plan]', e.message);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/mop/mapping ─────────────────────────────────
+  //  Reads company_mapping.csv (next to server.js), semicolon-separated, UTF-8.
+  //  Expected columns (header-based, order-independent, case-insensitive):
+  //    название/title, bitrix_id, omni_id, company_id
+  //  Query params:
+  //    ?bitrix_id=<id>   → returns the single matching row
+  //    ?company_id=<id>  → returns the single matching row
+  //    ?omni_id=<id>     → returns the single matching row
+  //    (none)            → returns all rows + lookup maps
+  if (req.method === 'GET' && pathname === '/api/mop/mapping') {
+    const csvPath = path.join(__dirname, 'company_mapping.csv');
+    try {
+      if (!fs.existsSync(csvPath)) {
+        return json(res, 404, { error: 'company_mapping.csv не найден рядом с server.js. Положите файл когда он будет готов.' });
+      }
+      const buf = fs.readFileSync(csvPath);
+      // try UTF-8 first; if it has the BOM or looks valid, use it; fallback to 1251
+      let text = buf.toString('utf8');
+      // crude mojibake check: many replacement chars → likely 1251
+      if ((text.match(/\uFFFD/g) || []).length > 5) {
+        text = new TextDecoder('windows-1251').decode(buf);
+      }
+      text = text.replace(/^\uFEFF/, ''); // strip BOM
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (!lines.length) return json(res, 200, { rows: [], count: 0 });
+
+      // header → column index, normalized
+      const header = lines[0].split(';').map(s => s.trim().toLowerCase());
+      const col = (names) => {
+        for (const n of names) {
+          const i = header.indexOf(n);
+          if (i !== -1) return i;
+        }
+        return -1;
+      };
+      const iTitle   = col(['название','название компании','title','name','company']);
+      const iBitrix  = col(['bitrix_id','bitrixid','bx_id','id_bitrix']);
+      const iOmni    = col(['omni_id','omniid','omnidesk_id']);
+      const iCompany = col(['company_id','companyid','uuid','company_uuid']);
+
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const p = lines[i].split(';');
+        const row = {
+          title:      iTitle   >= 0 ? (p[iTitle]   || '').trim() : '',
+          bitrix_id:  iBitrix  >= 0 ? (p[iBitrix]  || '').trim() : '',
+          omni_id:    iOmni    >= 0 ? (p[iOmni]    || '').trim() : '',
+          company_id: iCompany >= 0 ? (p[iCompany] || '').trim() : '',
+        };
+        if (!row.title && !row.bitrix_id && !row.company_id && !row.omni_id) continue;
+        rows.push(row);
+      }
+
+      // single-row lookup if a query param is provided
+      const u = new URL(req.url, `http://localhost:${PORT}`);
+      const qBitrix  = (u.searchParams.get('bitrix_id')  || '').trim();
+      const qCompany = (u.searchParams.get('company_id') || '').trim();
+      const qOmni    = (u.searchParams.get('omni_id')    || '').trim();
+      if (qBitrix || qCompany || qOmni) {
+        const found = rows.find(r =>
+          (qBitrix  && r.bitrix_id  === qBitrix) ||
+          (qCompany && r.company_id === qCompany) ||
+          (qOmni    && r.omni_id    === qOmni)
+        );
+        return json(res, 200, { found: !!found, row: found || null });
+      }
+
+      // build lookup maps for the client (by each id type)
+      const byBitrix = {}, byCompany = {}, byOmni = {};
+      for (const r of rows) {
+        if (r.bitrix_id)  byBitrix[r.bitrix_id]   = r;
+        if (r.company_id) byCompany[r.company_id] = r;
+        if (r.omni_id)    byOmni[r.omni_id]       = r;
+      }
+      return json(res, 200, {
+        count: rows.length,
+        columns_detected: { title: iTitle>=0, bitrix_id: iBitrix>=0, omni_id: iOmni>=0, company_id: iCompany>=0 },
+        rows,
+        by_bitrix: byBitrix,
+        by_company: byCompany,
+        by_omni: byOmni,
+      });
+    } catch(e) {
+      console.error('[MOP/Mapping]', e.message);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/mop/debt ────────────────────────────────────
+  //  Reads debit.csv (next to server.js), comma-separated, UTF-8.
+  //  Key columns: company_id (uuid), Долг (debt amount), fullname, bin.
+  //  ?company_id=<uuid> → single company's debt
+  //  (none)             → all rows + by_company map + total
+  if (req.method === 'GET' && pathname === '/api/mop/debt') {
+    const csvPath = path.join(__dirname, 'debit.csv');
+    try {
+      if (!fs.existsSync(csvPath)) {
+        return json(res, 404, { error: 'debit.csv не найден рядом с server.js' });
+      }
+      let text = fs.readFileSync(csvPath).toString('utf8').replace(/^\uFEFF/, '');
+
+      // minimal CSV parser supporting quoted fields with commas
+      function parseCsvLine(line) {
+        const out = []; let cur = ''; let inQ = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+            else inQ = !inQ;
+          } else if (ch === ',' && !inQ) { out.push(cur); cur = ''; }
+          else cur += ch;
+        }
+        out.push(cur);
+        return out;
+      }
+
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (!lines.length) return json(res, 200, { rows: [], total: 0 });
+
+      const header = parseCsvLine(lines[0]).map(s => s.trim().toLowerCase());
+      const idx = (names) => { for (const n of names) { const i = header.indexOf(n); if (i !== -1) return i; } return -1; };
+      const iCompany = idx(['company_id','companyid','uuid']);
+      const iDebt    = idx(['долг','debt']);
+      const iName    = idx(['fullname','название','название компании','name']);
+      const iBin     = idx(['bin','бин']);
+      const iTarif   = idx(['tarif_name','тариф','вид тарифа']);
+
+      const toNum = (s) => {
+        const raw = (s || '').replace(/\u00a0/g, '').replace(/\s/g, '').trim();
+        return /^-?\d+$/.test(raw) ? parseInt(raw, 10) : 0;
+      };
+
+      const rows = [];
+      const byCompany = {};
+      let total = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const p = parseCsvLine(lines[i]);
+        const company_id = iCompany >= 0 ? (p[iCompany] || '').trim() : '';
+        const debt = iDebt >= 0 ? toNum(p[iDebt]) : 0;
+        const name = iName >= 0 ? (p[iName] || '').trim() : '';
+        const bin  = iBin  >= 0 ? (p[iBin]  || '').trim() : '';
+        if (!company_id && !name) continue;
+        const row = { company_id, debt, name, bin };
+        rows.push(row);
+        total += debt;
+        if (company_id) byCompany[company_id] = (byCompany[company_id] || 0) + debt;
+      }
+
+      const u = new URL(req.url, `http://localhost:${PORT}`);
+      const qCompany = (u.searchParams.get('company_id') || '').trim();
+      if (qCompany) {
+        return json(res, 200, { found: byCompany[qCompany] != null, company_id: qCompany, debt: byCompany[qCompany] || 0 });
+      }
+
+      const debtors = rows.filter(r => r.debt > 0).sort((a,b) => b.debt - a.debt);
+      return json(res, 200, {
+        count: rows.length,
+        debtors_count: debtors.length,
+        total: Math.round(total),
+        by_company: byCompany,
+        debtors: debtors.map(r => ({ name: r.name, company_id: r.company_id, bin: r.bin, debt: r.debt })),
+      });
+    } catch(e) {
+      console.error('[MOP/Debt]', e.message);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
 
   // ══════════════════════════════════════════════════════════
   // BITRIX24 CRM — SQLite-backed local cache
@@ -559,7 +841,7 @@ const server = http.createServer(async (req, res) => {
   async function bxFetchPage(portal, token, start, filter) {
     // Build query string manually to avoid URL length issues
     const FIELDS = ['ID','TITLE','TYPE_ID','STAGE_ID','STAGE_SEMANTIC_ID','OPPORTUNITY',
-                    'CURRENCY_ID','ASSIGNED_BY_ID','CLOSEDATE','DATE_CREATE','DATE_MODIFY',
+                    'CURRENCY_ID','ASSIGNED_BY_ID','COMPANY_ID','CLOSEDATE','DATE_CREATE','DATE_MODIFY',
                     'LAST_ACTIVITY_TIME','LAST_COMMUNICATION_TIME','SOURCE_ID','CATEGORY_ID',
                     'IS_CLOSED','PROBABILITY','CLOSED','COMMENTS'];
     let qs = `start=${start}&order[DATE_MODIFY]=DESC`;
@@ -584,7 +866,58 @@ const server = http.createServer(async (req, res) => {
     return JSON.parse(body);
   }
 
-  // ── Sync progress tracker ────────────────────────────────
+  // ── Bitrix24 helper: fetch one page of COMPANIES ─────────
+  async function bxFetchCompanyPage(portal, token, start, filter) {
+    const FIELDS = ['ID','TITLE','ASSIGNED_BY_ID','DATE_CREATE','DATE_MODIFY'];
+    let qs = `start=${start}&order[ID]=ASC`;
+    FIELDS.forEach(f => { qs += `&select[]=${f}`; });
+    if (filter) {
+      Object.entries(filter).forEach(([k,v]) => { qs += `&filter[${k}]=${encodeURIComponent(v)}`; });
+    }
+    const parsed = new URL(portal);
+    const options = {
+      hostname: parsed.hostname,
+      path:     `/rest/${token}/crm.company.list.json?${qs}`,
+      method:   'GET',
+      headers:  { 'Accept': 'application/json' },
+    };
+    const { status, body } = await httpsRequest(options, null);
+    if (status !== 200) {
+      let msg = body;
+      try { msg = JSON.parse(body)?.error_description || body; } catch {}
+      throw new Error(`Bitrix24 HTTP ${status}: ${msg}`);
+    }
+    return JSON.parse(body);
+  }
+
+  // ── Bitrix24 helper: fetch users (id → name) ─────────────
+  async function bxFetchUsersMap(portal, token) {
+    const parsed = new URL(portal);
+    const map = {};
+    let start = 0;
+    for (let guard = 0; guard < 60; guard++) { // up to ~3000 users
+      const options = {
+        hostname: parsed.hostname,
+        path:     `/rest/${token}/user.get.json?start=${start}&ADMIN_MODE=true`,
+        method:   'GET',
+        headers:  { 'Accept': 'application/json' },
+      };
+      const { status, body } = await httpsRequest(options, null);
+      if (status !== 200) {
+        let msg = body; try { msg = JSON.parse(body)?.error_description || body; } catch {}
+        throw new Error(`Bitrix24 HTTP ${status}: ${msg}`);
+      }
+      const data = JSON.parse(body);
+      const batch = data.result || [];
+      for (const u of batch) {
+        map[u.ID] = [u.NAME, u.LAST_NAME].filter(Boolean).join(' ').trim() || ('ID ' + u.ID);
+      }
+      if (!data.next || !batch.length) break;
+      start = data.next;
+    }
+    return map;
+  }
+
   const _bxSync = { running: false, total: 0, fetched: 0, saved: 0, error: null, startedAt: null, finishedAt: null, mode: '' };
 
   // ── GET /api/bitrix/test ─────────────────────────────────
@@ -602,7 +935,125 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // ── GET /api/bitrix/sync-status ──────────────────────────
+  // ── GET /api/bitrix/companies?assigned=<id> ──────────────
+  //  Companies (portfolio) of a given manager by ASSIGNED_BY_ID.
+  //  Without ?assigned= returns the first page of all companies.
+  //  Paginates through Bitrix (50/page) up to a safety cap.
+  if (req.method === 'GET' && pathname === '/api/bitrix/companies') {
+    const portal = (req.headers['x-bx-portal'] || '').trim().replace(/\/$/, '');
+    const token  = (req.headers['x-bx-token']  || '').trim();
+    if (!portal || !token) return json(res, 400, { error: 'Missing x-bx-portal or x-bx-token' });
+
+    const u = new URL(req.url, `http://localhost:${PORT}`);
+    const assigned = (u.searchParams.get('assigned') || '').trim();
+    const countOnly = u.searchParams.get('count_only') === 'true';
+
+    const filter = assigned ? { 'ASSIGNED_BY_ID': assigned } : null;
+
+    try {
+      // First page also returns total
+      const first = await bxFetchCompanyPage(portal, token, 0, filter);
+      const total = first.total || 0;
+
+      if (countOnly) {
+        return json(res, 200, { total, assigned: assigned || null });
+      }
+
+      let companies = first.result || [];
+      // paginate remaining pages, capped to avoid runaway requests
+      const PAGE = 50, MAX_COMPANIES = 1000;
+      let start = PAGE;
+      while (companies.length < total && companies.length < MAX_COMPANIES && first.next) {
+        const pageData = await bxFetchCompanyPage(portal, token, start, filter);
+        const batch = pageData.result || [];
+        if (!batch.length) break;
+        companies = companies.concat(batch);
+        start += PAGE;
+        if (!pageData.next) break;
+      }
+
+      // resolve manager names (id → "Имя Фамилия")
+      let usersMap = {};
+      try { usersMap = await bxFetchUsersMap(portal, token); }
+      catch(e) { console.error('[BX users]', e.message); }
+
+      return json(res, 200, {
+        total,
+        returned: companies.length,
+        capped: companies.length >= MAX_COMPANIES && total > MAX_COMPANIES,
+        assigned: assigned || null,
+        manager_name: assigned ? (usersMap[assigned] || null) : null,
+        companies: companies.map(c => ({
+          id: c.ID,
+          title: c.TITLE,
+          assigned_by: c.ASSIGNED_BY_ID,
+          manager: usersMap[c.ASSIGNED_BY_ID] || ('ID ' + c.ASSIGNED_BY_ID),
+          date_create: c.DATE_CREATE,
+        })),
+      });
+    } catch(e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
+
+  // ── GET /api/bitrix/revenue?assigned=<id>[&from=YYYY-MM-DD&to=YYYY-MM-DD] ──
+  //  Sum of OPPORTUNITY for a manager's deals that are CLOSED WON
+  //  (STAGE_SEMANTIC_ID = 'S') with CLOSEDATE in the period.
+  //  Defaults to the current calendar month.
+  if (req.method === 'GET' && pathname === '/api/bitrix/revenue') {
+    const portal = (req.headers['x-bx-portal'] || '').trim().replace(/\/$/, '');
+    const token  = (req.headers['x-bx-token']  || '').trim();
+    if (!portal || !token) return json(res, 400, { error: 'Missing x-bx-portal or x-bx-token' });
+
+    const u = new URL(req.url, `http://localhost:${PORT}`);
+    const assigned = (u.searchParams.get('assigned') || '').trim();
+    if (!assigned) return json(res, 400, { error: 'assigned (manager id) required' });
+
+    // default period = current month
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const defFrom = `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
+    const lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+    const defTo   = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(lastDay)}`;
+    const from = (u.searchParams.get('from') || defFrom).trim();
+    const to   = (u.searchParams.get('to')   || defTo).trim();
+
+    const filter = {
+      'ASSIGNED_BY_ID': assigned,
+      'STAGE_SEMANTIC_ID': 'S',          // closed-won only
+      '>=CLOSEDATE': from,
+      '<=CLOSEDATE': to + ' 23:59:59',
+    };
+
+    try {
+      let total = 0, count = 0;
+      const byCompany = {};   // company_id → revenue sum
+      let start = 0;
+      const PAGE = 50, MAX_PAGES = 60; // up to 3000 deals
+      for (let p = 0; p < MAX_PAGES; p++) {
+        const data = await bxFetchPage(portal, token, start, filter);
+        const batch = data.result || [];
+        for (const d of batch) {
+          const amt = parseFloat(d.OPPORTUNITY) || 0;
+          total += amt;
+          count++;
+          const cid = d.COMPANY_ID;
+          if (cid && cid !== '0') byCompany[cid] = (byCompany[cid] || 0) + amt;
+        }
+        if (!data.next || !batch.length) break;
+        start = data.next;
+      }
+      return json(res, 200, {
+        assigned, from, to,
+        revenue: Math.round(total),
+        deals_count: count,
+        by_company: byCompany,   // { "39881": 545037, ... }
+      });
+    } catch(e) {
+      return json(res, 502, { error: e.message });
+    }
+  }
+
   if (req.method === 'GET' && pathname === '/api/bitrix/sync-status') {
     const db = getBxDb();
     const cached = db ? (db.prepare('SELECT COUNT(*) as c FROM deals').get()?.c || 0) : 0;
