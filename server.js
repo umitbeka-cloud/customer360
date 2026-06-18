@@ -25,6 +25,74 @@ catch(e) { console.warn('⚠️  pg not found. Run: npm install pg'); }
 // One pool PER database key — different DBs (tariffs, TrustMe) must not evict
 // each other. Evicting a pool mid-request caused "Cannot use a pool after end".
 const pgPools = new Map();
+
+// ── Company mapping (bitrix_id ↔ company_id uuid ↔ omni_id) ──
+// Cached in memory; reloaded if company_mapping.csv changes on disk.
+let _mappingCache = null, _mappingMtime = 0;
+function loadMappingMaps(dir) {
+  const p = path.join(dir, 'company_mapping.csv');
+  if (!fs.existsSync(p)) return null;
+  const mtime = fs.statSync(p).mtimeMs;
+  if (_mappingCache && mtime === _mappingMtime) return _mappingCache;
+
+  let text = fs.readFileSync(p).toString('utf8').replace(/^\uFEFF/, '');
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const header = (lines[0] || '').split(';').map(s => s.trim().toLowerCase());
+  const iBx = header.indexOf('bitrix_id');
+  const iCo = header.indexOf('company_id');
+  const iOm = header.indexOf('omni_id');
+
+  const byBitrix = {}, byCompany = {}, byOmni = {};
+  for (let i = 1; i < lines.length; i++) {
+    const p2 = lines[i].split(';');
+    const bx = iBx >= 0 ? (p2[iBx]||'').trim() : '';
+    const co = iCo >= 0 ? (p2[iCo]||'').trim() : '';
+    const om = iOm >= 0 ? (p2[iOm]||'').trim() : '';
+    const row = { bitrix_id: bx, company_id: co, omni_id: om };
+    if (bx) byBitrix[bx] = row;
+    if (co) byCompany[co] = row;
+    if (om) byOmni[om] = row;
+  }
+  _mappingCache = { byBitrix, byCompany, byOmni, count: lines.length - 1 };
+  _mappingMtime = mtime;
+  return _mappingCache;
+}
+
+// ── Industry categories (career code → name) ──
+let _catsCache = null;
+function loadCategories(dir) {
+  if (_catsCache) return _catsCache;
+  const p = path.join(dir, 'categories.json');
+  if (!fs.existsSync(p)) return {};
+  try { _catsCache = JSON.parse(fs.readFileSync(p, 'utf8')); }
+  catch(e) { console.error('[categories]', e.message); _catsCache = {}; }
+  return _catsCache;
+}
+
+// ── Feature code → human name (from trustme_features.csv) ──
+let _featNamesCache = null;
+function loadFeatureNames(dir) {
+  if (_featNamesCache) return _featNamesCache;
+  const p = path.join(dir, 'trustme_features.csv');
+  _featNamesCache = {};
+  if (!fs.existsSync(p)) return _featNamesCache;
+  try {
+    let text = fs.readFileSync(p).toString('utf8').replace(/^\uFEFF/, '');
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    function parseLine(line){const out=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}else if(ch===','&&!inQ){out.push(cur);cur='';}else cur+=ch;}out.push(cur);return out;}
+    const hdr = parseLine(lines[0]).map(s=>s.trim().toLowerCase());
+    const iName = hdr.findIndex(x=>x.includes('назв')||x==='name');
+    const iCode = hdr.findIndex(x=>x.includes('код')||x.includes('uuid')||x==='code');
+    for (let i=1;i<lines.length;i++){
+      const p2 = parseLine(lines[i]);
+      const code = iCode>=0 ? (p2[iCode]||'').trim() : '';
+      const name = iName>=0 ? (p2[iName]||'').trim() : '';
+      if (code) _featNamesCache[code] = name || code;
+    }
+  } catch(e) { console.error('[featureNames]', e.message); }
+  return _featNamesCache;
+}
+
 function getPgPool(host, port, database, user, password, ssl) {
   const key = `${host}:${port}:${database}:${user}`;
   let pool = pgPools.get(key);
@@ -621,6 +689,298 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ── GET /api/pg/diag-signmax?company_id=<uuid> ───────────
+  //  Diagnostic: shows tarif_id from subscription and whether it matches
+  //  charge_snapshots / tarif_values. Uses pg-* (tariffs DB).
+  if (req.method === 'GET' && pathname === '/api/pg/diag-signmax') {
+    if (!Pool) return json(res, 503, { error: 'pg not installed' });
+    const h = req.headers;
+    if (!h['x-pg-host']) return json(res, 400, { error: 'Missing pg creds' });
+    const u = new URL(req.url, `http://localhost:${PORT}`);
+    const companyId = (u.searchParams.get('company_id') || '').trim();
+    if (!companyId) return json(res, 400, { error: 'company_id required' });
+    const out = {};
+    try {
+      const pool = getPgPool(h['x-pg-host'], h['x-pg-port']||'5432', h['x-pg-database'], h['x-pg-user'], h['x-pg-password']||'', h['x-pg-ssl']||'false');
+      const sub = await pool.query(`SELECT * FROM sign_subscriptions WHERE company_id=$1 ORDER BY is_active DESC NULLS LAST, expiration_date DESC NULLS LAST LIMIT 1`, [companyId]);
+      out.subscription = sub.rows[0] || null;
+      out.subscription_columns = sub.rows.length ? Object.keys(sub.rows[0]) : [];
+      if (sub.rows[0] && sub.rows[0].tarif_id) {
+        const tid = sub.rows[0].tarif_id;
+        // charge_snapshots columns
+        try {
+          const cs = await pool.query(`SELECT * FROM charge_snapshots WHERE id=$1 LIMIT 1`, [tid]);
+          out.charge_snapshots_found = cs.rows.length > 0;
+          out.charge_snapshots_columns = cs.rows.length ? Object.keys(cs.rows[0]) : [];
+          if (cs.rows.length) out.charge_snapshots_sample = cs.rows[0];
+        } catch(e) { out.charge_snapshots_error = e.message; }
+        // tarif_values columns
+        try {
+          const tv = await pool.query(`SELECT * FROM tarif_values WHERE id=$1 LIMIT 1`, [tid]);
+          out.tarif_values_found = tv.rows.length > 0;
+          out.tarif_values_columns = tv.rows.length ? Object.keys(tv.rows[0]) : [];
+          if (tv.rows.length) out.tarif_values_sample = tv.rows[0];
+        } catch(e) { out.tarif_values_error = e.message; }
+      }
+      return json(res, 200, out);
+    } catch(e) {
+      return json(res, 500, { error: e.message, partial: out });
+    }
+  }
+
+  // ── GET /api/pg/test-settings ────────────────────────────
+  //  Connectivity check for the settings DB (x-set-pg-* headers).
+  if (req.method === 'GET' && pathname === '/api/pg/test-settings') {
+    if (!Pool) return json(res, 503, { error: 'pg not installed. Run: npm install pg' });
+    const h = req.headers;
+    if (!h['x-set-pg-host'] || !h['x-set-pg-database'] || !h['x-set-pg-user'])
+      return json(res, 400, { error: 'Missing settings DB credentials' });
+    try {
+      const pool = getPgPool(
+        h['x-set-pg-host'], h['x-set-pg-port']||'5432',
+        h['x-set-pg-database'], h['x-set-pg-user'],
+        h['x-set-pg-password']||'', h['x-set-pg-ssl']||'false'
+      );
+      await pool.query('SELECT 1');
+      return json(res, 200, { ok: true });
+    } catch(e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/c360/company?bitrix_id=<id> ─────────────────
+  //  Resolves uuid + omni_id via mapping, then bundles:
+  //  tariff (sign_subscriptions) + debt (debit.csv) + risk (risk_scores).
+  //  Needs pg-* headers for the tariffs DB.
+  if (req.method === 'GET' && pathname === '/api/c360/company') {
+    const u = new URL(req.url, `http://localhost:${PORT}`);
+    const bitrixId = (u.searchParams.get('bitrix_id') || '').trim();
+    if (!bitrixId) return json(res, 400, { error: 'bitrix_id required' });
+
+    const maps = loadMappingMaps(__dirname);
+    if (!maps) return json(res, 404, { error: 'company_mapping.csv не найден рядом с server.js' });
+
+    const m = maps.byBitrix[bitrixId];
+    if (!m) {
+      return json(res, 200, { mapped: false, bitrix_id: bitrixId, message: 'Компания не найдена в маппинге' });
+    }
+    const companyId = m.company_id;
+    const omniId = m.omni_id || null;
+    const result = { mapped: true, bitrix_id: bitrixId, company_id: companyId, omni_id: omniId };
+
+    // ── debt from debit.csv (by company_id uuid) ──
+    try {
+      const debtPath = path.join(__dirname, 'debit.csv');
+      if (fs.existsSync(debtPath) && companyId) {
+        let text = fs.readFileSync(debtPath).toString('utf8').replace(/^\uFEFF/, '');
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        const parseLine = (line) => {
+          const out = []; let cur = '', inQ = false;
+          for (let i=0;i<line.length;i++){const ch=line[i];
+            if(ch==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+            else if(ch===','&&!inQ){out.push(cur);cur='';}else cur+=ch;}
+          out.push(cur); return out;
+        };
+        const hdr = parseLine(lines[0]).map(s=>s.trim().toLowerCase());
+        const iC = hdr.indexOf('company_id'); const iD = hdr.indexOf('долг');
+        let debt = 0;
+        for (let i=1;i<lines.length;i++){
+          const p2 = parseLine(lines[i]);
+          if (iC>=0 && (p2[iC]||'').trim() === companyId) {
+            const raw = (p2[iD]||'').replace(/\u00a0/g,'').replace(/\s/g,'').trim();
+            if (/^-?\d+$/.test(raw)) debt += parseInt(raw,10);
+          }
+        }
+        result.debt = debt;
+      }
+    } catch(e) { console.error('[C360/debt]', e.message); }
+
+    // ── tariff + risk from PostgreSQL ──
+    const h = req.headers;
+    if (Pool && h['x-pg-host'] && h['x-pg-database'] && h['x-pg-user'] && companyId) {
+      try {
+        const pool = getPgPool(h['x-pg-host'], h['x-pg-port']||'5432', h['x-pg-database'], h['x-pg-user'], h['x-pg-password']||'', h['x-pg-ssl']||'false');
+        const sub = await pool.query(`
+          SELECT tarif_id, charge_id, tarif_name, prise, sign_count, expiration_date, is_active, is_frozen, date_add
+          FROM sign_subscriptions
+          WHERE company_id = $1 AND (is_deleted IS NULL OR is_deleted = false)
+          ORDER BY is_active DESC NULLS LAST, expiration_date DESC NULLS LAST LIMIT 1
+        `, [companyId]);
+        if (sub.rows.length) {
+          const r = sub.rows[0];
+          let daysLeft = null;
+          if (r.expiration_date) daysLeft = Math.ceil((new Date(r.expiration_date) - new Date())/(1000*60*60*24));
+
+          // ── max signatures (total allowance) ──
+          //  charge_snapshots joined by charge_id (TrustContract-style, JSON SignCount).
+          //  tarif_values joined by tarif_id (other tariffs, sign_count column).
+          let signMax = null;
+          let signMaxSrc = null;
+          // 1) charge_snapshots via charge_id
+          if (r.charge_id) {
+            try {
+              const cs = await pool.query(
+                `SELECT configuration_json FROM charge_snapshots WHERE charge_id = $1 LIMIT 1`,
+                [r.charge_id]
+              );
+              if (cs.rows.length && cs.rows[0].configuration_json) {
+                let cfg = cs.rows[0].configuration_json;
+                if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch {} }
+                if (cfg && typeof cfg === 'object') {
+                  const v = cfg.SignCount ?? cfg.signCount ?? cfg.signcount;
+                  if (v != null) { signMax = parseInt(v); signMaxSrc = 'charge_snapshots'; }
+                }
+              }
+            } catch(e) { console.error('[C360/signMax/cs]', e.message); }
+          }
+          // 2) tarif_values via tarif_id (fallback / other tariffs)
+          if (signMax == null && r.tarif_id) {
+            try {
+              const tv = await pool.query(
+                `SELECT sign_count FROM tarif_values WHERE id = $1 LIMIT 1`,
+                [r.tarif_id]
+              );
+              if (tv.rows.length && tv.rows[0].sign_count != null) { signMax = parseInt(tv.rows[0].sign_count); signMaxSrc = 'tarif_values'; }
+            } catch(e) { console.error('[C360/signMax/tv]', e.message); }
+          }
+
+          const signLeft = r.sign_count != null ? parseInt(r.sign_count) : null;
+          const signUsed = (signMax != null && signLeft != null) ? (signMax - signLeft) : null;
+
+          result.tariff = {
+            name: r.tarif_name,
+            tarif_id: r.tarif_id,
+            price: r.prise?parseInt(r.prise):null,
+            sign_left: signLeft,          // remaining
+            sign_max: signMax,            // total allowance
+            sign_max_src: signMaxSrc,     // where max came from (debug)
+            sign_used: signUsed,          // used = max - left
+            expiration_date: r.expiration_date,
+            days_left: daysLeft,
+            is_frozen: r.is_frozen,
+            date_add: r.date_add
+          };
+        }
+        const risk = await pool.query(`
+          SELECT score FROM risk_scores WHERE company_id = $1
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST LIMIT 1
+        `, [companyId]);
+        if (risk.rows.length) {
+          const score = parseFloat(risk.rows[0].score);
+          let zone = 'green';
+          if (score >= 0.6) zone = 'red'; else if (score >= 0.3) zone = 'yellow';
+          result.risk = { score, zone };
+        }
+      } catch(e) { console.error('[C360/pg]', e.message); result.pg_error = e.message; }
+    }
+
+    // ── industry from TrustMe DB: contract.company_requisites.career ──
+    //  Different DB than tariffs → uses x-tm-pg-* headers. Match by id (= company_id).
+    if (Pool && h['x-tm-pg-host'] && h['x-tm-pg-database'] && h['x-tm-pg-user'] && companyId) {
+      try {
+        const tmPool = getPgPool(
+          h['x-tm-pg-host'], h['x-tm-pg-port']||'5432',
+          h['x-tm-pg-database'], h['x-tm-pg-user'],
+          h['x-tm-pg-password']||'', h['x-tm-pg-ssl']||'false'
+        );
+        const career = await tmPool.query(`
+          SELECT career FROM contract.company_requisites WHERE id = $1 LIMIT 1
+        `, [companyId]);
+        if (career.rows.length && career.rows[0].career != null) {
+          const code = String(career.rows[0].career).trim();
+          const cats = loadCategories(__dirname);
+          result.industry = { code, name: cats[code] || null };
+        }
+      } catch(e) { console.error('[C360/career]', e.message); }
+    }
+
+    // ── enabled features from settings DB: public."CompanyFeatures".ConfigJson ──
+    //  Different DB → uses x-set-pg-* headers. Keep only true flags, map to names.
+    if (Pool && h['x-set-pg-host'] && h['x-set-pg-database'] && h['x-set-pg-user'] && companyId) {
+      try {
+        const setPool = getPgPool(
+          h['x-set-pg-host'], h['x-set-pg-port']||'5432',
+          h['x-set-pg-database'], h['x-set-pg-user'],
+          h['x-set-pg-password']||'', h['x-set-pg-ssl']||'false'
+        );
+        const feat = await setPool.query(
+          `SELECT "ConfigJson" FROM "CompanyFeatures" WHERE "CompanyId" = $1 LIMIT 1`,
+          [companyId]
+        );
+        if (feat.rows.length && feat.rows[0].ConfigJson) {
+          let cfg = feat.rows[0].ConfigJson;
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch {} }
+          if (cfg && typeof cfg === 'object') {
+            // map feature code → human name via trustme_features.csv catalog
+            const nameByCode = loadFeatureNames(__dirname);
+            const enabled = [];
+            for (const [code, on] of Object.entries(cfg)) {
+              if (on === true) enabled.push({ code, name: nameByCode[code] || code });
+            }
+            result.features = { enabled, total_flags: Object.keys(cfg).length };
+          }
+        }
+      } catch(e) { console.error('[C360/features]', e.message); result.features_error = e.message; }
+    }
+
+    return json(res, 200, result);
+  }
+
+  // ── GET /api/c360/tariffs?bitrix_id=|omni_id=|company_id= ─
+  //  All subscriptions (tariff history) of a company. Resolves uuid via mapping
+  //  from whichever id is provided.
+  if (req.method === 'GET' && pathname === '/api/c360/tariffs') {
+    if (!Pool) return json(res, 503, { error: 'pg not installed' });
+    const h = req.headers;
+    if (!h['x-pg-host'] || !h['x-pg-database'] || !h['x-pg-user'])
+      return json(res, 400, { error: 'Missing PostgreSQL credentials' });
+
+    const u = new URL(req.url, `http://localhost:${PORT}`);
+    const bitrixId  = (u.searchParams.get('bitrix_id')  || '').trim();
+    const omniId    = (u.searchParams.get('omni_id')    || '').trim();
+    let   companyId = (u.searchParams.get('company_id') || '').trim();
+
+    // resolve company_id (uuid) via mapping if not given directly
+    if (!companyId) {
+      const maps = loadMappingMaps(__dirname);
+      if (!maps) return json(res, 404, { error: 'company_mapping.csv не найден' });
+      let m = null;
+      if (bitrixId) m = maps.byBitrix[bitrixId];
+      else if (omniId) m = maps.byOmni[omniId];
+      if (!m) return json(res, 200, { mapped: false, tariffs: [] });
+      companyId = m.company_id;
+    }
+    if (!companyId) return json(res, 200, { mapped: false, tariffs: [] });
+
+    try {
+      const pool = getPgPool(h['x-pg-host'], h['x-pg-port']||'5432', h['x-pg-database'], h['x-pg-user'], h['x-pg-password']||'', h['x-pg-ssl']||'false');
+      const q = await pool.query(`
+        SELECT tarif_name, prise, sign_count, expiration_date, date_add,
+               is_active, is_frozen, is_deleted
+        FROM sign_subscriptions
+        WHERE company_id = $1
+        ORDER BY date_add DESC NULLS LAST
+      `, [companyId]);
+      return json(res, 200, {
+        mapped: true,
+        company_id: companyId,
+        count: q.rows.length,
+        tariffs: q.rows.map(r => ({
+          name: r.tarif_name,
+          price: r.prise ? parseInt(r.prise) : null,
+          sign_left: r.sign_count != null ? parseInt(r.sign_count) : null,
+          expiration_date: r.expiration_date,
+          date_add: r.date_add,
+          is_active: r.is_active,
+          is_frozen: r.is_frozen,
+          is_deleted: r.is_deleted,
+        })),
+      });
+    } catch(e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/features ────────────────────────────────────
   //  Reads trustme_features.csv (next to server.js) — catalog of all
   //  product features/feature-flags. UTF-8, comma-separated.
@@ -1106,16 +1466,31 @@ const server = http.createServer(async (req, res) => {
       try { usersMap = await bxFetchUsersMap(portal, token); }
       catch(e) { console.error('[BX users]', e.message); }
 
+      // mapping → which platforms each company is matched on
+      const maps = loadMappingMaps(__dirname);
+
       return json(res, 200, {
         query: q,
         total: first.total || companies.length,
-        companies: companies.map(c => ({
-          id: c.ID,
-          title: c.TITLE,
-          bin: '',  // BIN lives in a UF_CRM_* field — wire up once field name is known
-          assigned_by: c.ASSIGNED_BY_ID,
-          manager: usersMap[c.ASSIGNED_BY_ID] || ('ID ' + c.ASSIGNED_BY_ID),
-        })),
+        companies: companies.map(c => {
+          const m = maps ? maps.byBitrix[c.ID] : null;
+          const platforms = ['bitrix']; // it came from Bitrix
+          if (m) {
+            if (m.company_id) platforms.push('db');
+            if (m.omni_id)    platforms.push('omni');
+          }
+          return {
+            id: c.ID,
+            title: c.TITLE,
+            bin: '',
+            assigned_by: c.ASSIGNED_BY_ID,
+            manager: usersMap[c.ASSIGNED_BY_ID] || ('ID ' + c.ASSIGNED_BY_ID),
+            matched: !!m,
+            platforms,
+            company_id: m ? m.company_id : null,
+            omni_id: m ? m.omni_id : null,
+          };
+        }),
       });
     } catch(e) {
       return json(res, 502, { error: e.message });

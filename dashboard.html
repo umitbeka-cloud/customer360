@@ -549,8 +549,16 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  cursor: pointer;
+  user-select: none;
 }
 .setup-title i { font-size: 17px; color: var(--text3); }
+.setup-title .setup-chevron { margin-left: auto; font-size: 18px; color: var(--text3); transition: transform .2s; }
+/* collapsed: hide everything in the card except the title */
+.setup-card.collapsed { padding-bottom: 20px; }
+.setup-card.collapsed .setup-title { margin-bottom: 0; }
+.setup-card.collapsed > *:not(.setup-title) { display: none; }
+.setup-card.collapsed .setup-chevron { transform: rotate(-90deg); }
 
 .info-box {
   display: flex;
@@ -1619,6 +1627,51 @@ a:hover { text-decoration: underline; }
       </div>
 
       <div class="setup-card">
+        <div class="setup-title"><i class="ti ti-puzzle"></i>PostgreSQL — Settings (функции компаний)</div>
+        <div class="info-box">
+          <i class="ti ti-info-circle"></i>
+          <span>Отдельное подключение к базе <strong>settings</strong> для подключённых функций. Таблица: <code>public.CompanyFeatures</code>, колонка <code>ConfigJson</code>.</span>
+        </div>
+        <div class="row2">
+          <div class="field-wrap">
+            <label class="field-lbl">Host</label>
+            <input type="text" id="set-pg-host" class="input" placeholder="db.example.com" />
+          </div>
+          <div class="field-wrap">
+            <label class="field-lbl">Port</label>
+            <input type="text" id="set-pg-port" class="input" placeholder="5432" />
+          </div>
+        </div>
+        <div class="field-wrap">
+          <label class="field-lbl">База данных</label>
+          <input type="text" id="set-pg-database" class="input" placeholder="settings" />
+        </div>
+        <div class="row2">
+          <div class="field-wrap">
+            <label class="field-lbl">Пользователь</label>
+            <input type="text" id="set-pg-user" class="input" placeholder="postgres" />
+          </div>
+          <div class="field-wrap">
+            <label class="field-lbl">Пароль</label>
+            <input type="password" id="set-pg-password" class="input" placeholder="••••••••" />
+          </div>
+        </div>
+        <div class="field-wrap">
+          <label class="field-lbl">SSL</label>
+          <select id="set-pg-ssl" class="select" style="width:180px">
+            <option value="false">Без SSL</option>
+            <option value="true">SSL (без проверки сертификата)</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn-primary" onclick="testSetPg()">
+            <i class="ti ti-plug" style="font-size:13px"></i> Проверить подключение
+          </button>
+          <span id="set-pg-status"></span>
+        </div>
+      </div>
+
+      <div class="setup-card">
         <div class="setup-title"><i class="ti ti-info-circle"></i>Как это работает</div>
         <div class="step-list">
           <div class="step-row">
@@ -2123,10 +2176,12 @@ a:hover { text-decoration: underline; }
             <div class="c360-head-title">
               <span id="c360-name">—</span>
               <span class="c360-status-pill" id="c360-status">—</span>
+              <span class="c360-status-pill" id="c360-risk-badge" style="display:none">—</span>
             </div>
             <div class="c360-head-meta">
               <span><i class="ti ti-id"></i>ID: <span id="c360-id">—</span></span>
               <span><i class="ti ti-building"></i>БИН: <span id="c360-bin">—</span></span>
+              <span><i class="ti ti-database"></i>company_id: <span id="c360-uuid" style="font-family:var(--mono);font-size:11px">—</span></span>
               <span><i class="ti ti-phone"></i><span id="c360-phone">—</span></span>
               <span><i class="ti ti-mail"></i><span id="c360-email">—</span></span>
             </div>
@@ -2140,13 +2195,9 @@ a:hover { text-decoration: underline; }
             <div class="card-title"><i class="ti ti-receipt"></i>Тариф и продление
               <a class="mop-link" style="margin-left:auto" onclick="c360ShowAllTariffs()">Все тарифы →</a>
             </div>
-            <div style="display:flex;gap:6px;margin-bottom:10px">
-              <input id="c360-uuid-input" class="mop-inp" style="flex:1;font-size:11px" placeholder="company_id (uuid) для теста" />
-              <button class="btn-secondary" style="padding:4px 10px;font-size:11px" onclick="c360LoadSubscription()">↻</button>
-            </div>
             <div class="c360-row"><span class="k">Тариф</span><span class="v" id="c360-tariff">—</span></div>
             <div class="c360-row"><span class="k">Цена</span><span class="v" id="c360-price">—</span></div>
-            <div class="c360-row"><span class="k">Подписаний</span><span class="v" id="c360-signs">—</span></div>
+            <div class="c360-row"><span class="k">Использовано подписаний</span><span class="v" id="c360-signs">—</span></div>
             <div class="c360-row"><span class="k">Дата окончания</span><span class="v" id="c360-expire">—</span></div>
             <div class="c360-row"><span class="k">Осталось</span><span class="v" id="c360-daysleft">—</span></div>
             <!-- Подключённые функции -->
@@ -2211,14 +2262,14 @@ a:hover { text-decoration: underline; }
         </div>
 
         <!-- Bottom: product activity -->
-        <!-- DATA: PostgreSQL (активность по продукту) -->
+        <!-- DATA: sign_subscriptions (sign_count и др.) -->
         <div class="card">
-          <div class="card-title"><i class="ti ti-chart-bar"></i>Активность по продукту (за 30 дней)</div>
+          <div class="card-title"><i class="ti ti-chart-bar"></i>Активность по продукту</div>
           <div class="c360-act-row">
-            <div class="c360-act"><div class="n">420</div><div class="l">Документов подписано</div></div>
-            <div class="c360-act"><div class="n">18</div><div class="l">Пользователей</div></div>
-            <div class="c360-act"><div class="n">2 мин</div><div class="l">Среднее время подписания</div></div>
-            <div class="c360-act"><div class="n">2</div><div class="l">Обращений в поддержку</div></div>
+            <div class="c360-act"><div class="n" id="c360-act-signs">—</div><div class="l">Использовано подписаний</div></div>
+            <div class="c360-act"><div class="n" id="c360-act-tariff">—</div><div class="l">Текущий тариф</div></div>
+            <div class="c360-act"><div class="n" id="c360-act-price">—</div><div class="l">Стоимость тарифа</div></div>
+            <div class="c360-act"><div class="n" id="c360-act-since">—</div><div class="l">Клиент с</div></div>
           </div>
         </div>
 
@@ -2416,7 +2467,8 @@ function setSetting(key, val) { localStorage.setItem('od_' + key, val); }
 function loadSettings() {
   ['od-domain','od-email','od-key','od-period','od-limit','claude-key','claude-model','claude-lang',
    'pg-host','pg-port','pg-database','pg-user','pg-password','pg-ssl',
-   'tm-pg-host','tm-pg-port','tm-pg-database','tm-pg-user','tm-pg-password','tm-pg-ssl'].forEach(id => {
+   'tm-pg-host','tm-pg-port','tm-pg-database','tm-pg-user','tm-pg-password','tm-pg-ssl',
+   'set-pg-host','set-pg-port','set-pg-database','set-pg-user','set-pg-password','set-pg-ssl'].forEach(id => {
     const el = document.getElementById(id);
     const stored = getSetting(id.replaceAll('-','_'));
     if (stored && el) el.value = stored;
@@ -2425,7 +2477,8 @@ function loadSettings() {
 function saveSettings() {
   ['od-domain','od-email','od-key','od-period','od-limit','claude-key','claude-model','claude-lang',
    'pg-host','pg-port','pg-database','pg-user','pg-password','pg-ssl',
-   'tm-pg-host','tm-pg-port','tm-pg-database','tm-pg-user','tm-pg-password','tm-pg-ssl'].forEach(id => {
+   'tm-pg-host','tm-pg-port','tm-pg-database','tm-pg-user','tm-pg-password','tm-pg-ssl',
+   'set-pg-host','set-pg-port','set-pg-database','set-pg-user','set-pg-password','set-pg-ssl'].forEach(id => {
     const el = document.getElementById(id);
     if (el) setSetting(id.replaceAll('-','_'), el.value);
   });
@@ -3184,9 +3237,30 @@ async function testTmPg() {
   }
 }
 
-async function fetchCompanyTariffs(bin, companyName) {
+async function fetchCompanyTariffs(bin, companyName, omniId) {
   const h = getPgHeaders();
   if (!h['x-pg-host'] || !h['x-pg-database'] || !h['x-pg-user']) return null;
+
+  // Preferred: exact match via company_mapping by omni_id → company_id (uuid)
+  if (omniId) {
+    try {
+      const resp = await fetch('/api/c360/tariffs?omni_id=' + encodeURIComponent(omniId), { headers: h });
+      if (resp.ok) {
+        const d = await resp.json();
+        if (d.mapped && d.tariffs) {
+          // adapt field names to renderTariffHistory (expects tarif_name, prise, sign_count...)
+          return d.tariffs.map(t => ({
+            tarif_name: t.name, prise: t.price, sign_count: t.sign_left,
+            expiration_date: t.expiration_date, date_add: t.date_add,
+            is_active: t.is_active, is_frozen: t.is_frozen, is_deleted: t.is_deleted,
+          }));
+        }
+        // mapped:false → fall through to BIN/name search below
+      }
+    } catch(e) { console.warn('[tariffs/mapping]', e.message); }
+  }
+
+  // Fallback: fuzzy search by BIN / name (legacy)
   const cleanBin = (bin || '').replace(/\D/g, '');
   if (!cleanBin && !companyName) return null;
   const params = new URLSearchParams();
@@ -3291,10 +3365,10 @@ async function pickCompany(idx) {
   `;
 
   const el_tariffs = document.getElementById('company-tariffs');
-  if (!company.bin && !company.name) {
+  if (!company.bin && !company.name && !company.id) {
     if (el_tariffs) el_tariffs.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:6px 0"><i class="ti ti-alert-circle" style="margin-right:5px"></i>Нет данных для поиска в БД</div>';
   } else {
-    fetchCompanyTariffs(company.bin, company.name).then(rows => {
+    fetchCompanyTariffs(company.bin, company.name, company.id).then(rows => {
       const el = document.getElementById('company-tariffs');
       if (!el) return;
       el.innerHTML = rows === null
@@ -5717,6 +5791,26 @@ function exportProblemMapCSV() {
 const _origImportJSON = typeof importJSON === 'function' ? importJSON : null;
 
 loadSettings();
+
+// ── Setup cards accordion: collapse all, expand on title click ──
+(function initSetupAccordion() {
+  function setup() {
+    document.querySelectorAll('#page-setup .setup-card').forEach((card, idx) => {
+      const title = card.querySelector('.setup-title');
+      if (!title || title.dataset.accordion) return;
+      title.dataset.accordion = '1';
+      // add chevron
+      const chev = document.createElement('i');
+      chev.className = 'ti ti-chevron-down setup-chevron';
+      title.appendChild(chev);
+      // collapse all by default (open the first one for orientation)
+      if (idx !== 0) card.classList.add('collapsed');
+      title.addEventListener('click', () => card.classList.toggle('collapsed'));
+    });
+  }
+  if (document.readyState !== 'loading') setup();
+  else document.addEventListener('DOMContentLoaded', setup);
+})();
 // Авто-загрузка при старте отключена.
 // Данные загружаются только вручную:
 //   🔄 (синхронизация) или 🗄 (полная выгрузка) в топбаре,
@@ -5911,6 +6005,37 @@ function getTmPgHeaders() {
     'x-pg-password': (document.getElementById('tm-pg-password')?.value || '').trim(),
     'x-pg-ssl':      (document.getElementById('tm-pg-ssl')?.value      || 'false'),
   };
+}
+
+function getSetPgHeaders() {
+  // Settings DB (set-pg-*) — sent as x-set-pg-* so it doesn't clash with other DBs
+  return {
+    'x-set-pg-host':     (document.getElementById('set-pg-host')?.value     || '').trim(),
+    'x-set-pg-port':     (document.getElementById('set-pg-port')?.value     || '5432').trim(),
+    'x-set-pg-database': (document.getElementById('set-pg-database')?.value || '').trim(),
+    'x-set-pg-user':     (document.getElementById('set-pg-user')?.value     || '').trim(),
+    'x-set-pg-password': (document.getElementById('set-pg-password')?.value || '').trim(),
+    'x-set-pg-ssl':      (document.getElementById('set-pg-ssl')?.value      || 'false'),
+  };
+}
+
+async function testSetPg() {
+  const st = document.getElementById('set-pg-status');
+  if (st) st.innerHTML = '<span style="color:var(--text3);margin-left:10px">Подключаемся...</span>';
+  saveSettings();
+  const h = getSetPgHeaders();
+  if (!h['x-set-pg-host'] || !h['x-set-pg-database'] || !h['x-set-pg-user']) {
+    if (st) st.innerHTML = '<span style="color:var(--red);margin-left:10px">Заполни host, базу и пользователя</span>';
+    return;
+  }
+  try {
+    const resp = await fetch('/api/pg/test-settings', { headers: h });
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.error || 'Ошибка');
+    if (st) st.innerHTML = '<span style="color:var(--accent);margin-left:10px">✓ Подключение работает</span>';
+  } catch(e) {
+    if (st) st.innerHTML = `<span style="color:var(--red);margin-left:10px">${e.message}</span>`;
+  }
 }
 
 function loadNps() {
@@ -6339,9 +6464,14 @@ async function c360Search() {
       const mgr = c.manager || ('ID ' + c.assigned_by);
       const initial = (mgr || '?').trim().charAt(0).toUpperCase();
       const payload = encodeURIComponent(JSON.stringify(c));
+      const platColors = { bitrix:'#5B9EF7', db:'#5CF4A0', omni:'#A78BFA' };
+      const platLabels = { bitrix:'Bitrix', db:'DB', omni:'Omni' };
+      const badges = (c.platforms || []).map(p =>
+        `<span class="mop-badge" style="background:${platColors[p]}22;color:${platColors[p]};font-size:9px">${platLabels[p]||p}</span>`
+      ).join(' ');
       return `<div class="c360-list-row" onclick="c360OpenCompany('${payload}')">
-        <div class="c360-list-name">${escapeHtml(c.title || '—')}</div>
-        <div class="c360-list-bin">${escapeHtml(c.bin || '—')}</div>
+        <div class="c360-list-name">${escapeHtml(c.title || '—')}${c.matched ? '' : ' <span style="color:var(--text3);font-size:10px">(нет в маппинге)</span>'}</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">${badges}</div>
         <div class="c360-list-mgr"><span class="mop-mini-av">${escapeHtml(initial)}</span> ${escapeHtml(mgr)}</div>
       </div>`;
     }).join('');
@@ -6375,6 +6505,114 @@ function c360OpenCompany(payload) {
   // reset detail fields then fetch full company detail from Bitrix
   ['c360-phone','c360-email','c360-industry','c360-ctype','c360-city'].forEach(id => set(id, '…'));
   c360LoadCompanyDetail(c.id);
+
+  // bundled data (tariff + debt + risk) via mapping by bitrix_id
+  ['c360-tariff','c360-price','c360-signs','c360-expire','c360-daysleft','c360-debt','c360-risk','c360-uuid'].forEach(id => set(id, '…'));
+  c360LoadBundle(c.id);
+}
+
+// Load tariff + debt + risk in one call (mapping resolves uuid)
+async function c360LoadBundle(bitrixId) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  if (!bitrixId) return;
+  // tariffs DB (pg-*) for tariff+risk; TrustMe DB (tm-pg-*) for industry; debt is file-based
+  const h = getPgHeaders();
+  const tm = getTmPgHeaders();
+  h['x-tm-pg-host']     = tm['x-pg-host'];
+  h['x-tm-pg-port']     = tm['x-pg-port'];
+  h['x-tm-pg-database'] = tm['x-pg-database'];
+  h['x-tm-pg-user']     = tm['x-pg-user'];
+  h['x-tm-pg-password'] = tm['x-pg-password'];
+  h['x-tm-pg-ssl']      = tm['x-pg-ssl'];
+  Object.assign(h, getSetPgHeaders());  // settings DB for enabled features
+  try {
+    const resp = await fetch(`/api/c360/company?bitrix_id=${encodeURIComponent(bitrixId)}`, { headers: h });
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.error || 'Ошибка запроса');
+
+    if (!d.mapped) {
+      ['c360-tariff','c360-price','c360-signs','c360-expire','c360-daysleft','c360-debt','c360-risk'].forEach(id => set(id, '—'));
+      set('c360-uuid', 'нет в маппинге');
+      toast('Компания не найдена в маппинге', 'warn');
+      return;
+    }
+
+    // company_id (uuid) resolved via mapping
+    set('c360-uuid', d.company_id || '—');
+
+    // tariff
+    if (d.tariff) {
+      set('c360-tariff', d.tariff.is_frozen ? `${d.tariff.name} (заморожен)` : (d.tariff.name || '—'));
+      set('c360-price', d.tariff.price != null ? fmtMoney(d.tariff.price) : '—');
+      // signatures: "осталось из максимума"
+      let signsText = '—';
+      if (d.tariff.sign_left != null && d.tariff.sign_max != null) signsText = `${d.tariff.sign_left} из ${d.tariff.sign_max}`;
+      else if (d.tariff.sign_left != null) signsText = `${d.tariff.sign_left} осталось`;
+      set('c360-signs', signsText);
+      set('c360-expire', d.tariff.expiration_date ? new Date(d.tariff.expiration_date).toLocaleDateString('ru-RU') : '—');
+      const dl = document.getElementById('c360-daysleft');
+      if (dl) {
+        if (d.tariff.days_left == null) dl.textContent = '—';
+        else if (d.tariff.days_left < 0) { dl.textContent = `просрочено на ${-d.tariff.days_left} дн.`; dl.style.color = 'var(--red)'; }
+        else { dl.textContent = `через ${d.tariff.days_left} дн.`; dl.style.color = d.tariff.days_left <= 14 ? 'var(--orange)' : 'var(--text)'; }
+      }
+    } else {
+      ['c360-tariff','c360-price','c360-signs','c360-expire','c360-daysleft'].forEach(id => set(id, '—'));
+    }
+
+    // product activity block (from sign_subscriptions)
+    if (d.tariff) {
+      // used = max - left
+      let usedText = '—';
+      if (d.tariff.sign_used != null && d.tariff.sign_max != null) usedText = `${d.tariff.sign_used} / ${d.tariff.sign_max}`;
+      else if (d.tariff.sign_left != null) usedText = `${d.tariff.sign_left} осталось`;
+      set('c360-act-signs', usedText);
+      set('c360-act-tariff', d.tariff.name || '—');
+      set('c360-act-price', d.tariff.price != null ? fmtMoney(d.tariff.price) : '—');
+      set('c360-act-since', d.tariff.date_add ? new Date(d.tariff.date_add).toLocaleDateString('ru-RU') : '—');
+    } else {
+      ['c360-act-signs','c360-act-tariff','c360-act-price','c360-act-since'].forEach(id => set(id, '—'));
+    }
+
+    // debt
+    const debtEl = document.getElementById('c360-debt');
+    if (debtEl) debtEl.textContent = (d.debt != null) ? fmtMoney(d.debt) : '0 ₸';
+
+    // industry from company_requisites.career (overrides Bitrix industry if present)
+    if (d.industry && d.industry.name) {
+      const indEl = document.getElementById('c360-industry');
+      if (indEl) indEl.textContent = d.industry.name;
+    }
+
+    // enabled features for this company (from settings DB)
+    window._c360features = d.features ? (d.features.enabled || []) : null;
+    // if the features box is currently open, refresh it
+    const fbox = document.getElementById('c360-features-box');
+    if (fbox && fbox.style.display !== 'none') renderC360Features();
+
+    // risk zone — both in "Тон клиента" and as a header badge
+    const labels = { red:'Высокий риск', yellow:'Средний риск', green:'Низкий риск' };
+    const labelsShort = { red:'Высокий', yellow:'Средний', green:'Низкий' };
+    const colors = { red:'var(--red)', yellow:'var(--yellow)', green:'var(--accent)' };
+    const bg = { red:'rgba(255,87,87,.13)', yellow:'rgba(245,200,66,.13)', green:'rgba(92,244,160,.13)' };
+    const riskEl = document.getElementById('c360-risk');
+    const badgeEl = document.getElementById('c360-risk-badge');
+    if (d.risk) {
+      if (riskEl) { riskEl.textContent = labelsShort[d.risk.zone] || '—'; riskEl.style.color = colors[d.risk.zone] || 'var(--text)'; }
+      if (badgeEl) {
+        badgeEl.style.display = '';
+        badgeEl.textContent = `🔴 ${labels[d.risk.zone]}`.replace('🔴', d.risk.zone==='red'?'🔴':d.risk.zone==='yellow'?'🟡':'🟢');
+        badgeEl.style.background = bg[d.risk.zone];
+        badgeEl.style.color = colors[d.risk.zone];
+      }
+    } else {
+      if (riskEl) riskEl.textContent = '—';
+      if (badgeEl) badgeEl.style.display = 'none';
+    }
+  } catch(e) {
+    console.error('[C360/Bundle]', e.message);
+    toast('Данные компании: ' + e.message, 'err');
+  }
 }
 
 // Pull full company fields from Bitrix (phone, email, industry, city)
@@ -6467,39 +6705,88 @@ async function c360ToggleFeatures() {
   }
   box.style.display = 'block';
   if (chev) chev.style.transform = 'rotate(180deg)';
+  renderC360Features();
+}
 
-  if (!_c360featuresCache) {
-    box.innerHTML = `<div style="color:var(--text3);font-size:12px;padding:6px 0">Загрузка…</div>`;
-    try {
-      const resp = await fetch('/api/features');
-      const d = await resp.json();
-      if (!resp.ok) throw new Error(d.error || 'Ошибка');
-      _c360featuresCache = d.features || [];
-    } catch(e) {
-      box.innerHTML = `<div style="color:var(--red);font-size:12px">${escapeHtml(e.message)}</div>`;
-      return;
-    }
+function renderC360Features() {
+  const box = document.getElementById('c360-features-box');
+  if (!box) return;
+  const feats = window._c360features;
+  if (feats === null || feats === undefined) {
+    box.innerHTML = `<div style="color:var(--text3);font-size:12px;padding:6px 0">Нет данных о функциях (подключи базу settings в Настройках или у компании нет записи).</div>`;
+    return;
   }
-  // NOTE: which features a company actually has needs the mapping table.
-  // For now we list the full catalog as reference.
+  if (!feats.length) {
+    box.innerHTML = `<div style="color:var(--text3);font-size:12px;padding:6px 0">Нет включённых функций.</div>`;
+    return;
+  }
   box.innerHTML = `
-    <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Каталог функций (${_c360featuresCache.length}). Какие включены у компании — подключим после маппинга.</div>
-    <div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto">
-      ${_c360featuresCache.map(f => `
-        <div style="display:flex;align-items:flex-start;gap:8px;font-size:12px">
-          <i class="ti ti-circle-dashed" style="font-size:14px;color:var(--text3);margin-top:2px;flex-shrink:0"></i>
-          <div>
-            <span style="font-weight:500">${escapeHtml(f.name)}</span>
-            <span class="mop-badge" style="background:var(--bg3);color:var(--text3);margin-left:5px;font-size:9px">${escapeHtml(f.type)}</span>
-            ${f.desc ? `<div style="color:var(--text3);font-size:11px;margin-top:1px">${escapeHtml(f.desc)}</div>` : ''}
-          </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Включено функций: ${feats.length}</div>
+    <div style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto">
+      ${feats.map(f => `
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+          <i class="ti ti-circle-check-filled" style="font-size:15px;color:var(--accent);flex-shrink:0"></i>
+          <span style="font-weight:500">${escapeHtml(f.name || f.code)}</span>
+          ${f.name && f.name !== f.code ? `<span class="mop-badge" style="background:var(--bg3);color:var(--text3);font-size:9px">${escapeHtml(f.code)}</span>` : ''}
         </div>`).join('')}
     </div>`;
 }
 
 // Stub: show all tariffs of the company (needs mapping/history later)
-function c360ShowAllTariffs() {
-  toast('Все тарифы компании подключим после маппинг-таблицы', 'warn');
+async function c360ShowAllTariffs() {
+  const c = window._c360current;
+  if (!c || !c.id) { toast('Сначала откройте компанию', 'warn'); return; }
+
+  // build / reuse modal
+  let modal = document.getElementById('c360-tariffs-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'c360-tariffs-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `<div style="background:var(--bg1);border:1px solid var(--border);border-radius:var(--r2);max-width:680px;width:100%;max-height:80vh;overflow:auto;padding:22px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-family:var(--display);font-weight:700;font-size:17px">Все тарифы — ${escapeHtml(c.title||'')}</div>
+      <button class="c360-back" style="margin:0" onclick="document.getElementById('c360-tariffs-modal').remove()"><i class="ti ti-x"></i></button>
+    </div>
+    <div id="c360-tariffs-body"><div style="text-align:center;padding:30px;color:var(--text3)">Загрузка…</div></div>
+  </div>`;
+
+  const h = getPgHeaders();
+  try {
+    const resp = await fetch(`/api/c360/tariffs?bitrix_id=${encodeURIComponent(c.id)}`, { headers: h });
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.error || 'Ошибка запроса');
+    const body = document.getElementById('c360-tariffs-body');
+    if (!d.mapped || !d.tariffs || !d.tariffs.length) {
+      body.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3)">Нет тарифов</div>`;
+      return;
+    }
+    body.innerHTML = `<table class="hoc-tbl" style="width:100%">
+      <thead><tr><th>Тариф</th><th>Цена</th><th>Осталось</th><th>Окончание</th><th>Статус</th></tr></thead>
+      <tbody>
+        ${d.tariffs.map(t => {
+          let status = t.is_deleted ? '<span class="mop-badge" style="background:var(--bg3);color:var(--text3)">удалён</span>'
+            : t.is_frozen ? '<span class="mop-badge mop-b-yellow">заморожен</span>'
+            : t.is_active ? '<span class="mop-badge mop-b-active">активен</span>'
+            : '<span class="mop-badge" style="background:var(--bg3);color:var(--text3)">неактивен</span>';
+          return `<tr>
+            <td>${escapeHtml(t.name||'—')}</td>
+            <td class="num">${t.price!=null?fmtMoney(t.price):'—'}</td>
+            <td class="num">${t.sign_left!=null?t.sign_left:'—'}</td>
+            <td class="num">${t.expiration_date?new Date(t.expiration_date).toLocaleDateString('ru-RU'):'—'}</td>
+            <td>${status}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  } catch(e) {
+    console.error('[C360/AllTariffs]', e.message);
+    const body = document.getElementById('c360-tariffs-body');
+    if (body) body.innerHTML = `<div style="text-align:center;padding:30px;color:var(--red)">${escapeHtml(e.message)}</div>`;
+  }
 }
 
 function c360AnalyzeChats() {
